@@ -1,0 +1,11 @@
+.idea
+__pycache__
+venv
+tmp*
+*.json
+*.csv
+*.sh
+*.txt
+*.out
+Figures/
+Caida/

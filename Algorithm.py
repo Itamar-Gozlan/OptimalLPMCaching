@@ -1,6 +1,6 @@
 import abc
 import ipaddress
-from Simulator.Utils import construct_tree
+from Utils import construct_tree
 import networkx as nx
 import itertools
 import copy

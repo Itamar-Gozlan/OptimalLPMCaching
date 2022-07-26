@@ -5,8 +5,7 @@ from random import random
 from matplotlib import pyplot as plt
 import numpy as np
 import json
-from Simulator.Utils import construct_tree
-from Simulator.Algorithm import OptimalLPMCache
+from Algorithm import OptimalLPMCache
 import os
 
 
@@ -28,7 +27,7 @@ def plot_zipf(weights):
 
 
 def generate_30M_weights():
-    with open("prefix_only.txt", 'r') as f:
+    with open("Zipf/prefix_only.txt", 'r') as f:
         prefix_array = f.readlines()
     # p = "zipf_sorted_headers.json"
     # p = "sorted_prefix_5.json"
@@ -49,7 +48,7 @@ def generate_30M_weights():
     print("+++++++++++")
     print(max(weights) /n_pkt)
 
-    with open("zipf_weight_30M_better.json", 'w') as f:
+    with open("Zipf/zipf_weight_30M_better.json", 'w') as f:
         json.dump(sorted(list(weights), reverse=True), f, default=str)
 
     # prefix_weight = {}
@@ -58,20 +57,20 @@ def generate_30M_weights():
     #
     # plot_zipf(prefix_weight)
 
-    # with open("short_prefix_with_weights.json", 'w') as f:
+    # with open("Zipf/short_prefix_with_weights.json", 'w') as f:
     #     json.dump(prefix_weight, f, default=str)
 
 
 def generate_sorted_traces():
-    bottom = sys.argv[1]
-    top = sys.argv[2]
+    bottom = int(sys.argv[1])
+    top = int(sys.argv[2])
     trace_name = "zipf_trace_{0}_{1}".format(bottom, top)
     print(trace_name)
     base_path = 'traces/'
     if not os.path.exists(base_path):
         os.makedirs(base_path)
 
-    with open("prefix_only.txt", 'r') as f:
+    with open("Zipf/prefix_only.txt", 'r') as f:
         prefix_array = f.readlines()
     prefix_array = list(map(lambda st: st.strip(), prefix_array))
 
@@ -83,7 +82,7 @@ def generate_sorted_traces():
     remain = list(set(successors.keys()) - set(head))
     np.random.shuffle(remain)
 
-    with open("zipf_weight_30M_better.json", 'r') as f:
+    with open("Zipf/zipf_weight_30M_better.json", 'r') as f:
         sorted_zipf_weight = json.load(f)
 
     prefix_to_weight = {}
@@ -116,7 +115,7 @@ def produce_packet_array_of_prefix_weight(prefix_weight, path_to_save):
 if __name__ == "__main__":
     # generate_30M_weights()
     # main()
-    # with open("prefix_with_weights.json", 'r') as f:
+    # with open("Zipf/prefix_with_weights.json", 'r') as f:
     #     prefix_weight = json.load(f)
     # plot_zipf(prefix_weight)
     generate_sorted_traces()

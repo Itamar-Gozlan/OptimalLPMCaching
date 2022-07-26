@@ -128,6 +128,8 @@ def offline_simulator():
     global base
     prefix_weight_json_path = sys.argv[1]
     packet_trace_json_path = sys.argv[2]
+    cache_size = int(sys.argv[3])
+
     # prefix_weight_json_path = base + "Zipf/traces/zipf_trace_10_50_prefix2weight.json"
     # packet_trace_json_path = base + "/Zipf/traces/zipf_trace_10_50_packet_array.json"
     with open(prefix_weight_json_path, 'r') as f:
@@ -135,7 +137,6 @@ def offline_simulator():
     threshold = 15
     shorter_prefix_weight = {k: np.int64(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
     print(len(shorter_prefix_weight))
-    cache_size = 1
     t0 = time.time()
     opt_cache_algorithm = OptimalLPMCache(cache_size=cache_size,
                                     policy=list(prefix_weight.keys()),

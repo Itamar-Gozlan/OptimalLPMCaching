@@ -9,8 +9,6 @@ import pydot
 from networkx.drawing.nx_pydot import graphviz_layout
 from collections import defaultdict, OrderedDict
 
-
-
 rule_to_vertex = None
 vertex_to_rule = None
 final_nodes = None
@@ -54,23 +52,23 @@ class RDXRuleNode:
         global cache_size
         df = pd.DataFrame({
             'sz': [cache_size - i for i in range(cache_size)],
-            'weight' : [self.cache_weight[cache_size - i] for i in range(cache_size)],
-            'set' : [self.cache_items[cache_size - i] for i in range(cache_size)],
+            'weight': [self.cache_weight[cache_size - i] for i in range(cache_size)],
+            'set': [self.cache_items[cache_size - i] for i in range(cache_size)],
             'goto': [self.goto_nodes[cache_size - i] for i in range(cache_size)]
         })
-        return "rule: {0} weight: {1} vertex: {2}\n".format(astrix(self.rule), self.weight, self.vertex) + df.to_markdown(index=False)
-
-
+        return "rule: {0} weight: {1} vertex: {2}\n".format(astrix(self.rule), self.weight,
+                                                            self.vertex) + df.to_markdown(index=False)
 
 
 # ---------------- Preliminaries -----------------
 
 def binary_lpm_to_str(bin_str):
     return str(ipaddress.IPv4Address(int(bin_str + "".join((32 - len(
-        bin_str)) * ['0']),2)))  + "/{0}".format(len(bin_str))
+        bin_str)) * ['0']), 2))) + "/{0}".format(len(bin_str))
+
 
 def construct_tree(policy):
-    T, final_nodes  = build_prefix_tree(policy)
+    T, final_nodes = build_prefix_tree(policy)
     rule_to_vertex_binary = recover(T)
     T.remove_node(-1)
     compress_prefix_tree(T, final_nodes)
@@ -91,6 +89,7 @@ def construct_tree(policy):
         successors[node] = []
 
     return T, rule_to_vertex_ip4network, successors
+
 
 def astrix(rule):
     global n_bits
@@ -621,6 +620,7 @@ def playground():
     nx.draw(T, pos)
     plt.show()
     return T, final_nodes
+
 
 def main():
     global cache_size

@@ -1,6 +1,6 @@
 import abc
-from Utils import construct_tree
 import ipaddress
+from Simulator.Utils import construct_tree
 import networkx as nx
 import itertools
 import copy
@@ -74,38 +74,79 @@ class OptimalLPMCache(Algorithm):
         self.cache_size = cache_size
         self.dependency_splice = dependency_splice
         self.feasible_set = {}
+        self.n_goto_nodes = 0
+
+    def iterative_get_cache(self, prefix_weight):
+        cache = set()
+        local_prefix_weight = copy.deepcopy(prefix_weight)
+        while len(cache) < self.cache_size:
+            self.feasible_set = {}
+            cache_candidate_depth_dict = self.get_cache_candidate_tree(prefix_weight)
+            bottom_up = self.construct_clean_bottom_up_list(cache_candidate_depth_dict, cache)
+            curr_k = max([len(self.successors[v]) for v in bottom_up[:-1]]) # no 0
+            curr_k = min(curr_k, self.cache_size)
+            for v in bottom_up:
+                self.consider_v_for_cache(v, local_prefix_weight, curr_k)
+            cache_add = self.return_cache(curr_k)
+            for pfx in cache_add:
+                if 'goto' in pfx:
+                    pfx = pfx.split('_')[0]
+                if pfx in local_prefix_weight:
+                    del local_prefix_weight[pfx]
+            cache = cache.union(cache_add)
+            if len(local_prefix_weight) == 0:
+                break
+        return cache
+
+    def construct_clean_bottom_up_list(self, cache_candidate_depth_dict, cache):
+        all_nodes = list(itertools.chain(*[cache_candidate_depth_dict[d] for d in sorted(list(cache_candidate_depth_dict.keys()), reverse=True)]))
+        get_vtx = lambda rule: self.rule_to_vertex[rule.split('_')[0]] if 'goto' in rule else self.rule_to_vertex[rule]
+        cache_mask = map(get_vtx, cache)
+        return list(filter(lambda vtx: vtx not in cache_mask, all_nodes))
 
     def get_cache(self, prefix_weight):
         cache_candidate_depth_dict = self.get_cache_candidate_tree(prefix_weight)
         print("SUM: {0}".format(sum([len(l) for l in cache_candidate_depth_dict.values()])))
+        self.n_goto_nodes = 0
         for depth in sorted(list(cache_candidate_depth_dict.keys()), reverse=True):
             for v in cache_candidate_depth_dict[depth]:
-                if len(self.successors[v]) == 0:  # leaf
-                    continue
-                else:
-                    children_feasible_set = FeasibleSet.OptDTUnion(self.get_candidate_feasible_set(v, prefix_weight),
-                                                                   self.cache_size)
-                    v_in_cache = {i: False for i in range(self.cache_size + 1)}
-                    # Adding v
-                    for i in range(self.cache_size + 1):
-                        if children_feasible_set.item_count[i] < i and children_feasible_set.superset_of(i,
-                                                                                                         self.successors[
-                                                                                                             v]):
-                            children_feasible_set.insert_iset_item(i, v, prefix_weight.get(self.vertex_to_rule[v], 0))
-                            v_in_cache[i] = True
+                self.consider_v_for_cache(v, prefix_weight, self.cache_size)
 
-                    if self.dependency_splice:
-                        self.apply_dependency_splice(v, prefix_weight, children_feasible_set, v_in_cache)
-                    else:
-                        self.feasible_set[v] = children_feasible_set
+        return self.return_cache(self.cache_size)
+
+    def return_cache(self, cache_size):
         if ADD_GOTO_NODES:
             get_rule = lambda vtx: self.vertex_to_rule[vtx] if isinstance(vtx, int) else self.vertex_to_rule[int(
                 vtx.split("_")[0])] + "_goto"
+            self.n_goto_nodes = len(list(filter(lambda rule: isinstance(rule, str) and 'goto' in rule,
+                                                self.feasible_set[ROOT].feasible_iset[cache_size])))
         else:
             get_rule = lambda vtx: self.vertex_to_rule[vtx]
-        return set([get_rule(v) for v in self.feasible_set[ROOT].feasible_iset[self.cache_size]])
 
-    def get_candidate_feasible_set(self, v, prefix_weight):
+        print("goto_nodes: {0}".format(self.n_goto_nodes))
+        return set([get_rule(v) for v in self.feasible_set[ROOT].feasible_iset[cache_size]])
+
+    def consider_v_for_cache(self, v, prefix_weight, cache_size):
+        if len(self.successors[v]) == 0:  # leaf
+            return
+        else:
+            children_feasible_set = FeasibleSet.OptDTUnion(self.get_candidate_feasible_set(v, prefix_weight, cache_size),
+                                                           cache_size)
+            v_in_cache = {i: False for i in range(cache_size + 1)}
+            # Adding v
+            for i in range(cache_size + 1):
+                if children_feasible_set.item_count[i] < i and children_feasible_set.superset_of(i,
+                                                                                                 self.successors[
+                                                                                                     v]):
+                    children_feasible_set.insert_iset_item(i, v, prefix_weight.get(self.vertex_to_rule[v], 0))
+                    v_in_cache[i] = True
+
+            if self.dependency_splice and len(self.successors[v]) < cache_size:
+                self.apply_dependency_splice(v, prefix_weight, children_feasible_set, v_in_cache, cache_size)
+            else:
+                self.feasible_set[v] = children_feasible_set
+
+    def get_candidate_feasible_set(self, v, prefix_weight, cache_size):
         # optimization for leafs, power of k choices
         leaf_children_of_v = []
         internal_nodes_children_of_v = []
@@ -117,7 +158,7 @@ class OptimalLPMCache(Algorithm):
         sorted_leaf_children_of_v = sorted(leaf_children_of_v,
                                            key=lambda u: prefix_weight.get(self.vertex_to_rule[u], 0), reverse=True)
         leaf_child_feasible_set = FeasibleSet()
-        for i in range(self.cache_size + 1):
+        for i in range(cache_size + 1):
             leaf_child_feasible_set.feasible_iset[i] = set(sorted_leaf_children_of_v[:i])
             leaf_child_feasible_set.feasible_iset_weight[i] = sum([prefix_weight.get(self.vertex_to_rule[u], 0) for u in
                                                                    sorted_leaf_children_of_v[:i]])
@@ -130,14 +171,14 @@ class OptimalLPMCache(Algorithm):
 
         return candidate_feasible_set
 
-    def apply_dependency_splice(self, v, prefix_weight, children_feasible_set, v_in_cache):
+    def apply_dependency_splice(self, v, prefix_weight, children_feasible_set, v_in_cache, cache_size):
         v_weight = prefix_weight.get(self.vertex_to_rule[v], 0)
         dependency_spliced_v = FeasibleSet()
         spliced = False
-        for i in range(self.cache_size + 1):
+        for i in range(cache_size + 1):
             j_maybe = i + len(
                 set(self.policy_tree.successors(v)) - children_feasible_set.feasible_iset[i])
-            if j_maybe + 1 <= self.cache_size and not v_in_cache[j_maybe + 1]:
+            if j_maybe + 1 <= cache_size and not v_in_cache[j_maybe + 1]:
                 sum_j_maybe = children_feasible_set.feasible_iset_weight[j_maybe + 1]
                 sum_i_and_v = children_feasible_set.feasible_iset_weight[i] + v_weight
                 if sum_j_maybe < sum_i_and_v:
@@ -157,7 +198,7 @@ class OptimalLPMCache(Algorithm):
 
                     dependency_spliced_v.item_count[j_maybe + 1] = j_maybe + 1
         if spliced:
-            for i in range(self.cache_size + 1):
+            for i in range(cache_size + 1):
                 if dependency_spliced_v.item_count.get(i) is None:  # copy
                     dependency_spliced_v.item_count[i] = children_feasible_set.item_count[i]
                     dependency_spliced_v.feasible_iset[i] = children_feasible_set.feasible_iset[i]
@@ -168,14 +209,14 @@ class OptimalLPMCache(Algorithm):
         else:
             self.feasible_set[v] = children_feasible_set
 
-    def OptDTUnion(self, feasible_set, children, prefix_weight):
+    def OptDTUnion(self, feasible_set, children, prefix_weight, cache_size):
         if len(children) == 1:
             return feasible_set[children[0]]
         split_i = int(len(children) / 2)
-        feasible_set_x = self.OptDTUnion(feasible_set, children[:split_i], prefix_weight)
-        feasible_set_y = self.OptDTUnion(feasible_set, children[split_i:], prefix_weight)
+        feasible_set_x = self.OptDTUnion(feasible_set, children[:split_i], prefix_weight, cache_size)
+        feasible_set_y = self.OptDTUnion(feasible_set, children[split_i:], prefix_weight, cache_size)
         feasible_set = {}
-        for i in range(self.cache_size + 1):
+        for i in range(cache_size + 1):
             max_i = set()
             for j in range(i + 1):
                 max_i = max(max_i, feasible_set_x[j].union(feasible_set_y[i - j]),

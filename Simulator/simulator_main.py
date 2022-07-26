@@ -1,9 +1,13 @@
+import json
+import sys
+import time
+
 from Utils import *
 from TimeSeriesLogger import *
 from Algorithm import *
 
 time_slice = 1.0
-
+base = ''
 
 class Controller:
     def __init__(self, epoch, cache_size, Algorithm):
@@ -16,6 +20,7 @@ class Controller:
         self.elapsed_time = 0
         self.cache_size = cache_size
         self.Algorithm = Algorithm
+        self.epoch_count = 0
 
     def miss_handler(self, cache_item, timestamp):
         if cache_item in self.cache_item_filter:
@@ -31,15 +36,17 @@ class Controller:
             self.elapsed_time = 0
             self.cache_item_filter = set()
             print("len(self.cache_item_counter) : {0}".format(len(self.cache_item_counter)))
-            for rule, count in list(self.cache_item_counter.items()):
-                count = int(count / 4)
-                if count == 0:
-                    del self.cache_item_counter[rule]
-                    continue
-                self.cache_item_counter[rule] = count
+            self.epoch_count += 1
+            if self.epoch_count > 10:
+                self.epoch_count = 0
+                for rule, count in list(self.cache_item_counter.items()):
+                    count = int(count / 4)
+                    if count == 0:
+                        del self.cache_item_counter[rule]
+                        continue
+                    self.cache_item_counter[rule] = count
             print("len(self.cache_item_counter) : {0}".format(len(self.cache_item_counter)))
             self.cache = self.Algorithm.get_cache(self.cache_item_counter)
-
             return True
 
         return False
@@ -77,19 +84,31 @@ class Switch:
                   2))
         return ret_str
 
+def online_simulator():
+    epoch = float(sys.argv[1])
+    cache_size_percentage = float(sys.argv[2])
+    dependency_splice = eval(sys.argv[3])
+    # with open("../Zipf/prefix_only.txt", 'r') as f:
+    #     policy = f.readlines()
 
-def main():
-    epoch = 1.0
     with open("../Zipf/prefix_only.txt", 'r') as f:
         policy = f.readlines()
-    cache_size = int(len(policy) * (0.5 / 100))
-    cache_size = 10
-    print(cache_size)
-    algorithm = OptimalLPMCache(cache_size, policy, dependency_splice=False)  # 5%
+
+    cache_size = int(len(policy) * (cache_size_percentage / 100))
+
+    print("=== Epoch {0}, Cache Size % {1}, Cache Size: {2} Dependency Splice {3} ===".format(epoch,
+                                                                                              cache_size_percentage,
+                                                                                              cache_size,
+                                                                                              dependency_splice))
+    json_path = "simulator_epoch{0}_cachesizep{1}_cachesize{2}_dependency_splice{3}".format(epoch,
+                                                                                            cache_size_percentage,
+                                                                                            cache_size,
+                                                                                            dependency_splice) + '.json'
+    algorithm = OptimalLPMCache(cache_size, policy, dependency_splice=dependency_splice)  # 5%
     # algorithm = PowerOfKChoices(cache_size)
     switch = Switch(epoch, cache_size, algorithm)
     clock = 0
-    with open("../Zipf/random_zipf_trace.json", 'r') as f:
+    with open("../Zipf/sorted_zipf_packet_trace.json", 'r') as f:
         packet_array = json.load(f)
     for idx, prefix in enumerate(packet_array):
         switch.send_to_switch(prefix, clock)
@@ -101,12 +120,57 @@ def main():
     print(" ")
     print(switch)
 
+    with open('../log/' + json_path, 'w') as f:
+        json.dump(switch.logger.event_logger, f)
+
+
+def offline_simulator():
+    global base
+    prefix_weight_json_path = sys.argv[1]
+    packet_trace_json_path = sys.argv[2]
+    # prefix_weight_json_path = base + "Zipf/traces/zipf_trace_10_50_prefix2weight.json"
+    # packet_trace_json_path = base + "/Zipf/traces/zipf_trace_10_50_packet_array.json"
+    with open(prefix_weight_json_path, 'r') as f:
+        prefix_weight = json.load(f)
+    threshold = 15
+    shorter_prefix_weight = {k: np.int64(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
+    print(len(shorter_prefix_weight))
+    cache_size = 1
+    t0 = time.time()
+    opt_cache_algorithm = OptimalLPMCache(cache_size=cache_size,
+                                    policy=list(prefix_weight.keys()),
+                                    dependency_splice=True)
+    print(time.time() - t0)
+    t0 = time.time()
+    optimal_offline_cache = opt_cache_algorithm.get_cache(shorter_prefix_weight)
+    print(time.time() - t0)
+
+    with open(packet_trace_json_path, 'r') as f:
+        packet_trace = json.load(f)
+
+    hit = 0
+    t0 = time.time()
+    for idx, packet in enumerate(packet_trace):
+        if packet in optimal_offline_cache:
+           hit += 1
+        if idx % 100000 == 0:
+            print("idx: {0} hit-count :{1}".format(idx, hit))
+    print(time.time() - t0)
+
+    print("Hit rate: {0}".format(hit*100/len(packet_trace)))
+
+
+
+
+
+
+def main():
+    global base
+    base = "/home/itamar/PycharmProjects/OptimalLPMCaching/"
+    # online_simulator()
+    offline_simulator()
+
+
 
 if __name__ == "__main__":
     main()
-    """
-    TODO
-    1. Leaf push with power of K choices
-    3. Heuristic algorithm
-    
-    """

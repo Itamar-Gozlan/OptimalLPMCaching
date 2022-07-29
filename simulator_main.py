@@ -175,21 +175,15 @@ def offline_simulator():
 
 
 def run_OTC():
-    # policy_json_path = sys.argv[1]
-    # packet_trace_json_path = sys.argv[2]
-    # cache_size = int(sys.argv[3])
-    #
-    # with open(policy_json_path, 'r') as f:
-    #     policy = json.load(f)
-    #
-    # with open(packet_trace_json_path, 'r') as f:
-    #     packet_trace = json.load(f)
+    policy_json_path = sys.argv[1]
+    packet_trace_json_path = sys.argv[2]
+    cache_size = int(sys.argv[3])
 
-    policy = [Utils.binary_lpm_to_str(s) for s in Utils.compute_random_policy(10)]
-    packet_trace = []
-    for i in range(10000):
-        packet_trace.append(policy[np.random.randint(len(policy)-1)])
-        
+    with open(policy_json_path, 'r') as f:
+        policy = json.load(f)
+
+    with open(packet_trace_json_path, 'r') as f:
+        packet_trace = json.load(f)
 
     OTC = OnlineTreeCache(policy, cache_size)
 

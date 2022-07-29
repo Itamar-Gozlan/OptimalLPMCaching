@@ -24,7 +24,6 @@ class RunCheck:
             OTC = OnlineTreeCache(policy, cache_size)
             print("s")
 
-
     @staticmethod
     def random_policy_tree_test():
         condition = False
@@ -479,6 +478,96 @@ class MakeRunScript:
 
         print("s")
 
+    @staticmethod
+    def construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path):
+        cmd_array = []
+        simulator_main = '/home/user46/OptimalLPMCaching/simulator_main.py'
+        result_dir = '/home/user46/OptimalLPMCaching/OTC_result/'
+        cache_size_array = [64, 128, 256, 512]
+        for trace_name in trace_name_array:
+            for cache_size in cache_size_array:
+                out_file = result_dir + trace_name.replace('packet_array', '').replace('.json', '') + '{0}_{1}'.format(
+                    trace_name.split('.')[-1], cache_size) + '.out'
+                # args: policy_json_path packet_trace_json_path cache_size
+                cmd = 'python ' + simulator_main + " {1} {0}{2} {3} > {4}\n".format(base,
+                                                                                    policy_json_path,
+                                                                                    trace_name,
+                                                                                    cache_size,
+                                                                                    out_file)
+                out_file_to_cmd[out_file] = cmd
+                cmd_array.append(cmd)
+        return cmd_array
+
+    @staticmethod
+    def cmd_array_to_run_files(n_files, cmd_array, lambda_key_sort):
+        sorted_by_processing_time = sorted(cmd_array, key=lambda_key_sort)
+        array_to_file = [[] for i in range(n_files)]
+        i = 0
+        while sorted_by_processing_time:
+            # print("i % n_files : {0}".format(i % n_files))
+            # print("len(array_to_file[i % n_files]) : {0}".format(len(array_to_file[i % n_files])))
+            cmd = sorted_by_processing_time.pop(0)
+            array_to_file[i % n_files].append(cmd)
+            # print("len(array_to_file[i % n_files]) : {0}".format(len(array_to_file[i % n_files])))
+            i += 1
+
+        for i in range(n_files):
+            with open('run_sc/run_sc_X{0}.sh'.format(i), 'w') as f:
+                f.writelines(array_to_file[i])
+
+        print(" =================== ")
+        for i in range(n_files):
+            print("chmod +x run_sc_X{0}.sh".format(i))
+
+        print(" =================== ")
+        for i in range(n_files):
+            print("nohup ./run_sc_X{0}.sh > run_sc_X{0}.out &".format(i))
+
+    @staticmethod
+    def make_OTC():
+        out_file_to_cmd = {}
+        cmd_array = []
+        policy_json_path = "/home/user46/OptimalLPMCaching/Zipf/prefix_only.json"
+
+        base = "/home/user46/OptimalLPMCaching/traces/sum60_90/"
+        trace_name_array = ["zipf_trace_10_50_packet_array.json",
+                            "zipf_trace_1_0_packet_array.json",
+                            "zipf_trace_20_50_packet_array.json",
+                            "zipf_trace_2_50_packet_array.json",
+                            "zipf_trace_30_50_packet_array.json",
+                            "zipf_trace_40_50_packet_array.json"]
+        cmd_array += MakeRunScript.construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+
+        base = "/home/user46/OptimalLPMCaching/Caida/6000rules/"
+        trace_name_array = ["caida_traceUDP_packet_array.json",
+                            "caida_traceUDP_policy.json",
+                            "caida_traceTCP_packet_array.json",
+                            "caida_traceTCP_policy.json"]
+
+        cmd_array += MakeRunScript.construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+
+        base = "/home/user46/OptimalLPMCaching/traces/sum60_70/"
+        trace_name_array = ["zipf_trace_10_50_packet_array.json"
+                            "zipf_trace_1_0_packet_array.json",
+                            "zipf_trace_20_50_packet_array.json",
+                            "zipf_trace_2_50_packet_array.json",
+                            "zipf_trace_30_50_packet_array.json",
+                            "zipf_trace_40_50_packet_array.json"]
+        cmd_array += MakeRunScript.construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+        base = "/home/user46/OptimalLPMCaching/traces/special_sort/"
+        trace_name_array = ["packet_array_sum60_70sorted_by_node_depth.json",
+                            "packet_array_sum60_70sorted_by_subtree_size_dvd_n_children.json",
+                            "packet_array_sum60_70_sorted_by_subtree_size.json",
+                            "packet_array_sum60_90sorted_by_node_depth.json",
+                            "packet_array_sum60_90sorted_by_subtree_size_dvd_n_children.json",
+                            "packet_array_sum60_90_sorted_by_subtree_size.json"]
+        cmd_array += MakeRunScript.construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+
+        print(len(cmd_array))
+        cmd_to_cache_size = lambda cmd_str: int(cmd_str.split(' ')[-3])
+        # cmd_array_to_run_files(n_files, cmd_array, lambda_key_sort)
+        MakeRunScript.cmd_array_to_run_files(8, cmd_array, lambda_key_sort=cmd_to_cache_size)
+
 
 def main():
     # PlotResultTable.plot_range_result_table("Figures/2707_results/offline_sum60_90/offline_sum60_90_result.csv")
@@ -507,7 +596,6 @@ def main():
     # plot_special_sort_result_table(
     # "/home/itamar/PycharmProjects/OptimalLPMCaching/Caida/6000rules/result/result_dir/result_udp.csv")
 
-
     # for X in ["sorted_by_subtree_size_dvd_n_children", "sorted_by_subtree_size", "sorted_by_depth"]:
     #     for Y in [70, 90]:
     #         ResultToTable.format_special_sort(
@@ -517,7 +605,8 @@ def main():
 
     # PlotResultTable.plot_caida_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/6000rules/result_dir/result_tcp.csv")
     # PlotResultTable.plot_caida_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/6000rules/result_dir/result_udp.csv")
-    RunCheck.test_online_tree_cache()
+    MakeRunScript.make_OTC()
+
 
 if __name__ == "__main__":
     main()

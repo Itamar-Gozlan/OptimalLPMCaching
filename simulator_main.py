@@ -2,6 +2,7 @@ import json
 import sys
 import time
 
+import Utils
 from Utils import *
 from TimeSeriesLogger import *
 from Algorithm import *
@@ -107,11 +108,11 @@ def online_simulator():
     policy = list(policy.keys())
 
     print("=== Epoch {0}, Cache Size % {1}, Cache Size: {2} Dependency Splice {3} ===".format(epoch,
-                                                                                              cache_size/len(policy),
+                                                                                              cache_size / len(policy),
                                                                                               cache_size,
                                                                                               dependency_splice))
     json_path = "simulator_epoch{0}_cachesizep{1}_cachesize{2}_dependency_splice{3}".format(epoch,
-                                                                                            cache_size/len(policy),
+                                                                                            cache_size / len(policy),
                                                                                             cache_size,
                                                                                             dependency_splice) + '.json'
     algorithm = OptimalLPMCache(cache_size, policy, dependency_splice=dependency_splice)  # 5%
@@ -141,7 +142,6 @@ def offline_simulator():
     cache_size = int(sys.argv[3])
     dependency_splice = eval(sys.argv[4])
 
-
     with open(prefix_weight_json_path, 'r') as f:
         prefix_weight = json.load(f)
     threshold = 0
@@ -149,8 +149,8 @@ def offline_simulator():
     # print(len(shorter_prefix_weight))
     t0 = time.time()
     opt_cache_algorithm = OptimalLPMCache(cache_size=cache_size,
-                                    policy=list(prefix_weight.keys()),
-                                    dependency_splice=dependency_splice)
+                                          policy=list(prefix_weight.keys()),
+                                          dependency_splice=dependency_splice)
     print(time.time() - t0)
     t0 = time.time()
     optimal_offline_cache = opt_cache_algorithm.get_cache(shorter_prefix_weight)
@@ -175,18 +175,23 @@ def offline_simulator():
 
 
 def run_OTC():
-    policy_json_path = sys.argv[1]
-    packet_trace_json_path = sys.argv[2]
-    cache_size = int(sys.argv[3])
+    # policy_json_path = sys.argv[1]
+    # packet_trace_json_path = sys.argv[2]
+    # cache_size = int(sys.argv[3])
+    #
+    # with open(policy_json_path, 'r') as f:
+    #     policy = json.load(f)
+    #
+    # with open(packet_trace_json_path, 'r') as f:
+    #     packet_trace = json.load(f)
 
-    with open(policy_json_path, 'r') as f:
-        policy = json.load(f)
-
-    with open(packet_trace_json_path, 'r') as f:
-        packet_trace = json.load(f)
+    policy = [Utils.binary_lpm_to_str(s) for s in Utils.compute_random_policy(10)]
+    packet_trace = []
+    for i in range(10000):
+        packet_trace.append(policy[np.random.randint(len(policy)-1)])
+        
 
     OTC = OnlineTreeCache(policy, cache_size)
-
 
     hit = 0
     t0 = time.time()
@@ -208,6 +213,7 @@ def main():
     # online_simulator()
     # offline_simulator()
     run_OTC()
+
 
 if __name__ == "__main__":
     main()

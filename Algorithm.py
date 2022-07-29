@@ -299,16 +299,15 @@ class OnlineTreeCache:
             self.rule_counter[vtx] = 1 + self.rule_counter.get(vtx, 0)
 
     def cache_hit(self, rule):
-        self.update_subtree_weight(self, self.rule_to_vertex[rule], -1)
-        self.rule_counter[self.rule_to_vertex[rule]] = -1 + self.rule_counter.get(vtx, 0)
+        vtx = self.rule_to_vertex[rule]
+        self.update_subtree_weight(vtx, -1)
+        self.rule_counter[vtx] = -1 + self.rule_counter.get(vtx, 0)
 
     def construct_subtree_size(self):
         self.subtree_size = {}
         depth_dict = OptimalLPMCache.construct_depth_dict(self.policy_tree)
         for d in sorted(list(depth_dict.keys()), reverse=True):
             for vtx in depth_dict[d]:
-                if vtx == 14532:
-                    print("s")
                 self.subtree_size[vtx] = 1
                 for sucessor in self.successors[vtx]:
                     self.subtree_size[vtx] += self.subtree_size[sucessor]
@@ -316,7 +315,7 @@ class OnlineTreeCache:
     def update_subtree_weight(self, vtx, weight):
         while self.subtree_size[vtx] <= self.cache_size and len(list(self.policy_tree.predecessors(vtx))) > 0:
             predecessor = list(self.policy_tree.predecessors(vtx))[0]  # one predecessor in a tree
-            self.subtree_weight[predecessor] = 1 + self.subtree_weight.get(predecessor, 0)
+            self.subtree_weight[predecessor] = weight + self.subtree_weight.get(predecessor, 0)
             vtx = predecessor
 
     def update_cache(self, vtx):
@@ -327,14 +326,18 @@ class OnlineTreeCache:
             while self.subtree_size[pred_vtx] <= self.cache_size and self.subtree_weight[pred_vtx] >= self.subtree_size[
                 pred_vtx] * self.alpha:
                 vtx = pred_vtx
-                pred_vtx = list(self.policy_tree.predecessors(vtx))[0]  # one predecessor in a tree
+                if len(list(self.policy_tree.predecessors(vtx))) > 0:
+                    pred_vtx = list(self.policy_tree.predecessors(vtx))[0]  # one predecessor in a tree
+                else:
+                    break
 
-            positive_change_set = nx.descendants(self.policy_tree, vtx)
-            positive_change_set.add(vtx)
+            positive_change_set = set([self.vertex_to_rule[u] for u in nx.descendants(self.policy_tree, vtx)])
+            positive_change_set.add(self.vertex_to_rule[vtx])
             # Return all nodes reachable from \(source\) in G.
             self.cache = self.cache.union(positive_change_set)
             if len(self.cache) > self.cache_size:  # flush
-                for v in self.cache - positive_change_set:
+                for rule_to_zero in self.cache - positive_change_set:
+                    v = self.rule_to_vertex[rule_to_zero]
                     self.update_subtree_weight(v, -self.rule_counter[v]) # increasing the subtree weight
                     self.rule_counter[v] = 0
                 self.cache = positive_change_set

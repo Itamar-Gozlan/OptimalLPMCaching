@@ -83,7 +83,7 @@ class OptimalLPMCache(Algorithm):
             self.feasible_set = {}
             cache_candidate_depth_dict = self.get_cache_candidate_tree(prefix_weight)
             bottom_up = self.construct_clean_bottom_up_list(cache_candidate_depth_dict, cache)
-            curr_k = max([len(self.successors[v]) for v in bottom_up[:-1]]) # no 0
+            curr_k = max([len(self.successors[v]) for v in bottom_up[:-1]])  # no 0
             curr_k = min(curr_k, self.cache_size)
             for v in bottom_up:
                 self.consider_v_for_cache(v, local_prefix_weight, curr_k)
@@ -99,7 +99,8 @@ class OptimalLPMCache(Algorithm):
         return cache
 
     def construct_clean_bottom_up_list(self, cache_candidate_depth_dict, cache):
-        all_nodes = list(itertools.chain(*[cache_candidate_depth_dict[d] for d in sorted(list(cache_candidate_depth_dict.keys()), reverse=True)]))
+        all_nodes = list(itertools.chain(
+            *[cache_candidate_depth_dict[d] for d in sorted(list(cache_candidate_depth_dict.keys()), reverse=True)]))
         get_vtx = lambda rule: self.rule_to_vertex[rule.split('_')[0]] if 'goto' in rule else self.rule_to_vertex[rule]
         cache_mask = map(get_vtx, cache)
         return list(filter(lambda vtx: vtx not in cache_mask, all_nodes))
@@ -130,8 +131,9 @@ class OptimalLPMCache(Algorithm):
         if len(self.successors[v]) == 0:  # leaf
             return
         else:
-            children_feasible_set = FeasibleSet.OptDTUnion(self.get_candidate_feasible_set(v, prefix_weight, cache_size),
-                                                           cache_size)
+            children_feasible_set = FeasibleSet.OptDTUnion(
+                self.get_candidate_feasible_set(v, prefix_weight, cache_size),
+                cache_size)
             v_in_cache = {i: False for i in range(cache_size + 1)}
             # Adding v
             for i in range(cache_size + 1):
@@ -271,6 +273,77 @@ class OptimalLPMCache(Algorithm):
     @staticmethod
     def set_weight(S, prefix_weight):
         return sum([prefix_weight.get(elem, 0) for elem in S])
+
+
+class OnlineTreeCache:
+    def __init__(self, policy, cache_size):
+        self.subtree_size = None
+        self.policy_tree, self.rule_to_vertex, self.successors = OptimalLPMCache.process_policy(policy)
+        self.vertex_to_rule = {value: key for key, value in self.rule_to_vertex.items()}
+        self.construct_subtree_size()
+        # for parent, descendant_array in self.successors.items():
+        #     for descendant in descendant_array:
+        #         self.predecessor[descendant] = parent
+        self.alpha = 2
+        self.subtree_weight = {}
+        self.cache_size = cache_size
+        self.cache = set()
+        self.rule_counter = {}
+
+    def cache_miss(self, rule):
+        vtx = self.rule_to_vertex[rule]
+        if self.subtree_size[vtx] <= self.cache_size:  # no need to keep track on subforests larger than cache size
+            self.subtree_weight[vtx] = 1 + self.subtree_weight.get(vtx, 0)
+            self.update_subtree_weight(vtx, 1)
+            self.update_cache(vtx)
+            self.rule_counter[vtx] = 1 + self.rule_counter.get(vtx, 0)
+
+    def cache_hit(self, rule):
+        self.update_subtree_weight(self, self.rule_to_vertex[rule], -1)
+        self.rule_counter[self.rule_to_vertex[rule]] = -1 + self.rule_counter.get(vtx, 0)
+
+    def construct_subtree_size(self):
+        self.subtree_size = {}
+        depth_dict = OptimalLPMCache.construct_depth_dict(self.policy_tree)
+        for d in sorted(list(depth_dict.keys()), reverse=True):
+            for vtx in depth_dict[d]:
+                if vtx == 14532:
+                    print("s")
+                self.subtree_size[vtx] = 1
+                for sucessor in self.successors[vtx]:
+                    self.subtree_size[vtx] += self.subtree_size[sucessor]
+
+    def update_subtree_weight(self, vtx, weight):
+        while self.subtree_size[vtx] <= self.cache_size and len(list(self.policy_tree.predecessors(vtx))) > 0:
+            predecessor = list(self.policy_tree.predecessors(vtx))[0]  # one predecessor in a tree
+            self.subtree_weight[predecessor] = 1 + self.subtree_weight.get(predecessor, 0)
+            vtx = predecessor
+
+    def update_cache(self, vtx):
+        # saturation: cnt_t(X) >= |X|*alpha
+        if self.subtree_weight[vtx] >= self.subtree_size[vtx] * self.alpha:
+            # maximality: cnt_t(Y) <= |Y|*alpha for any Y strict superset of X
+            pred_vtx = list(self.policy_tree.predecessors(vtx))[0]  # one predecessor in a tree
+            while self.subtree_size[pred_vtx] <= self.cache_size and self.subtree_weight[pred_vtx] >= self.subtree_size[
+                pred_vtx] * self.alpha:
+                vtx = pred_vtx
+                pred_vtx = list(self.policy_tree.predecessors(vtx))[0]  # one predecessor in a tree
+
+            positive_change_set = nx.descendants(self.policy_tree, vtx)
+            positive_change_set.add(vtx)
+            # Return all nodes reachable from \(source\) in G.
+            self.cache = self.cache.union(positive_change_set)
+            if len(self.cache) > self.cache_size:  # flush
+                for v in self.cache - positive_change_set:
+                    self.update_subtree_weight(v, -self.rule_counter[v]) # increasing the subtree weight
+                    self.rule_counter[v] = 0
+                self.cache = positive_change_set
+
+            # TODO - also to the nodes in the cache
+            self.update_subtree_weight(vtx, -self.subtree_weight[vtx])  # change to zero
+            for v in positive_change_set:
+                self.subtree_weight[v] = 0
+                self.rule_counter[v] = 0
 
 
 class PowerOfKChoices(Algorithm):

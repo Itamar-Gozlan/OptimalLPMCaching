@@ -7,5 +7,7 @@ tmp*
 *.sh
 *.txt
 *.out
+*.jpg
 Figures/
 Caida/
+run_sc/*

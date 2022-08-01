@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
-
+from Zipf import produce_packet_array_of_prefix_weight
 import Utils
 from Algorithm import *
 import time
@@ -16,6 +16,57 @@ ROOT_PREFIX = '0.0.0.0/0'
 
 
 class RunCheck:
+    @staticmethod
+    def get_random_policy_and_weight():
+        # policy = [Utils.binary_lpm_to_str(s) for s in Utils.compute_random_policy(15)]
+        # policy_weight = {k.strip(): np.random.randint(100) for k in policy}
+        # print("policy = {0}".format(policy))
+        # print("policy_weight = {0}".format(policy_weight))
+        policy = ['237.200.0.0/15', '107.236.0.0/14', '239.128.0.0/10', '59.168.0.0/14', '89.0.0.0/10',
+                  '199.156.64.0/19', '145.0.0.0/8', '145.40.0.0/13', '160.0.0.0/5', '192.0.0.0/2', '134.164.0.0/16',
+                  '253.221.140.172/32', '51.0.0.0/8', '0.64.0.0/10', '158.7.193.96/29']
+        policy_weight = {'237.200.0.0/15': 33, '107.236.0.0/14': 80, '239.128.0.0/10': 9, '59.168.0.0/14': 0,
+                         '89.0.0.0/10': 63, '199.156.64.0/19': 62, '145.0.0.0/8': 58, '145.40.0.0/13': 92,
+                         '160.0.0.0/5': 83, '192.0.0.0/2': 45, '134.164.0.0/16': 28, '253.221.140.172/32': 9,
+                         '51.0.0.0/8': 46, '0.64.0.0/10': 20, '158.7.193.96/29': 47}
+
+        if '0.0.0.0/0' not in policy:
+            policy.append("0.0.0.0/0")
+        policy_weight['0.0.0.0/0'] = 0
+        # packet_trace = produce_packet_array_of_prefix_weight(policy_weight)
+        packet_trace = ['51.0.0.0/8', '134.164.0.0/16', '160.0.0.0/5', '145.40.0.0/13', '134.164.0.0/16',
+                        '253.221.140.172/32', '145.40.0.0/13', '192.0.0.0/2', '145.0.0.0/8', '145.40.0.0/13']
+        return policy, policy_weight, packet_trace
+
+    @staticmethod
+    def validate_online_optimal_lpm():
+        policy, policy_weight, packet_trace = RunCheck.get_random_policy_and_weight()
+        cache_size = 3
+        dependency_splice = False
+
+        # Utils.draw_tree(offline.policy_tree, {v : v for v in offline.policy_tree.nodes})
+        # plt.show()
+        weights_up_to_i = {}
+        for i in range(len(packet_trace)):
+            offline = OptimalLPMCache(cache_size, policy, dependency_splice)
+            online = OnlineOptimalLPMCache(cache_size, policy, dependency_splice)
+            weights_up_to_i = {}
+            for packet in packet_trace[:i + 1]:
+                if packet not in online.cache:
+                    weights_up_to_i[packet] = 1 + weights_up_to_i.get(packet, 0)
+                    online.cache_miss(packet)
+            get_offline_cache = offline.get_cache(weights_up_to_i)
+            # print(online.rule_counter == {online.rule_to_vertex[r]:v for r,v in weights_up_to_i.items()})
+            print("Round {0}, Test: {1}".format(i, online.cache == get_offline_cache))
+
+        # get_offline_cache = offline.get_cache(policy_weight)
+        # for packet in packet_trace:
+        #     if packet not in online.cache:
+        #         online.cache_miss(packet)
+        #
+        # print(get_offline_cache == online.cache)
+        # print("s")
+
     @staticmethod
     def test_online_tree_cache():
         with open('Caida/6000rules_small/caida_traceTCP_policy.json', 'r') as f:
@@ -479,7 +530,7 @@ class MakeRunScript:
         print("s")
 
     @staticmethod
-    def construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path):
+    def construct_cmd_array_OTC(trace_name_array, base, out_file_to_cmd, policy_json_path):
         cmd_array = []
         simulator_main = '/home/user46/OptimalLPMCaching/simulator_main.py'
         result_dir = '/home/user46/OptimalLPMCaching/OTC_result/'
@@ -496,6 +547,37 @@ class MakeRunScript:
                                                                                     out_file)
                 out_file_to_cmd[out_file] = cmd
                 cmd_array.append(cmd)
+        return cmd_array
+
+    @staticmethod
+    def construct_cmd_array_online_experiment(trace_name_array, base, out_file_to_cmd, policy_json_path):
+        cmd_array = []
+        simulator_main = '/home/user46/OptimalLPMCaching/simulator_main.py'
+        result_dir = '/home/user46/OptimalLPMCaching/OptLPM_online/'
+        cache_size_array = [64, 128, 256, 512]
+        epoch_array = [1.0]  # , 0.5, 1.0]
+        opt_array = [True, False]
+        for trace_name in trace_name_array:
+            for cache_size in cache_size_array:
+                for epoch in epoch_array:
+                    for opt in opt_array:
+                        # policy = sys.argv[1]
+                        # packet_trace_json_path = sys.argv[2]
+                        # cache_size = int(sys.argv[3])
+                        # dependency_splice = eval(sys.argv[4])
+                        # epoch = int(sys.argv[5])
+                        out_file = (result_dir + trace_name + '_{0}_{1}_{2}'.format(cache_size, opt, epoch)).replace(
+                            '.json', '') + '.out'
+                        # args: policy_json_path packet_trace_json_path cache_size
+                        cmd = 'python ' + simulator_main + " {1} {0}{2} {3} {4} {5} > {6}\n".format(base,
+                                                                                                    policy_json_path,
+                                                                                                    trace_name,
+                                                                                                    cache_size,
+                                                                                                    opt,
+                                                                                                    epoch,
+                                                                                                    out_file)
+                        out_file_to_cmd[out_file] = cmd
+                        cmd_array.append(cmd)
         return cmd_array
 
     @staticmethod
@@ -524,49 +606,58 @@ class MakeRunScript:
             print("nohup ./run_sc_X{0}.sh > run_sc_X{0}.out &".format(i))
 
     @staticmethod
-    def make_OTC():
+    def make_run_sc():
         out_file_to_cmd = {}
         cmd_array = []
+        construct_cmd_array = MakeRunScript.construct_cmd_array_online_experiment
+        cmd_to_cache_size = lambda cmd_str: (float(cmd_str.split(' ')[-3]), int(cmd_str.split(' ')[-5]))
+
+        # construct_cmd_array = MakeRunScript.construct_cmd_array_OTC
+        # cmd_to_cache_size = lambda cmd_str: int(cmd_str.split(' ')[-3])
+
         policy_json_path = "/home/user46/OptimalLPMCaching/Zipf/prefix_only.json"
 
         base = "/home/user46/OptimalLPMCaching/traces/sum60_90/"
         trace_name_array = ["zipf_trace_10_50_packet_array.json",
                             "zipf_trace_1_0_packet_array.json",
                             "zipf_trace_20_50_packet_array.json",
-                            "zipf_trace_2_50_packet_array.json",
-                            "zipf_trace_30_50_packet_array.json",
-                            "zipf_trace_40_50_packet_array.json"]
-        cmd_array += MakeRunScript.construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+                             "zipf_trace_2_50_packet_array.json",
+                             "zipf_trace_30_50_packet_array.json",
+                             "zipf_trace_40_50_packet_array.json"]
+        cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
 
+        policy_json_path = "caida_traceUDP_policy.json"
         base = "/home/user46/OptimalLPMCaching/Caida/6000rules/"
-        trace_name_array = ["caida_traceUDP_packet_array.json",
-                            "caida_traceUDP_policy.json",
-                            "caida_traceTCP_packet_array.json",
-                            "caida_traceTCP_policy.json"]
+        trace_name_array = ["caida_traceUDP_packet_array.json"]
+        cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, base + policy_json_path)
 
-        cmd_array += MakeRunScript.construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+        policy_json_path = "caida_traceTCP_policy.json"
+        base = "/home/user46/OptimalLPMCaching/Caida/6000rules/"
+        trace_name_array = ["caida_traceTCP_packet_array.json"]
+        cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, base + policy_json_path)
 
-        base = "/home/user46/OptimalLPMCaching/traces/sum60_70/"
-        trace_name_array = ["zipf_trace_10_50_packet_array.json"
-                            "zipf_trace_1_0_packet_array.json",
-                            "zipf_trace_20_50_packet_array.json",
-                            "zipf_trace_2_50_packet_array.json",
-                            "zipf_trace_30_50_packet_array.json",
-                            "zipf_trace_40_50_packet_array.json"]
-        cmd_array += MakeRunScript.construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
-        base = "/home/user46/OptimalLPMCaching/traces/special_sort/"
-        trace_name_array = ["packet_array_sum60_70sorted_by_node_depth.json",
-                            "packet_array_sum60_70sorted_by_subtree_size_dvd_n_children.json",
-                            "packet_array_sum60_70_sorted_by_subtree_size.json",
-                            "packet_array_sum60_90sorted_by_node_depth.json",
-                            "packet_array_sum60_90sorted_by_subtree_size_dvd_n_children.json",
-                            "packet_array_sum60_90_sorted_by_subtree_size.json"]
-        cmd_array += MakeRunScript.construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+        # policy_json_path = "/home/user46/OptimalLPMCaching/Zipf/prefix_only.json"
+        # base = "/home/user46/OptimalLPMCaching/traces/sum60_70/"
+        # trace_name_array = ["zipf_trace_10_50_packet_array.json"
+        #                     "zipf_trace_1_0_packet_array.json",
+        #                     "zipf_trace_20_50_packet_array.json",
+        #                     "zipf_trace_2_50_packet_array.json",
+        #                     "zipf_trace_30_50_packet_array.json",
+        #                     "zipf_trace_40_50_packet_array.json"]
+        # cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+
+        # base = "/home/user46/OptimalLPMCaching/traces/special_sort/"
+        # trace_name_array = ["packet_array_sum60_70sorted_by_node_depth.json",
+        #                     "packet_array_sum60_70sorted_by_subtree_size_dvd_n_children.json",
+        #                     "packet_array_sum60_70_sorted_by_subtree_size.json",
+        #                     "packet_array_sum60_90sorted_by_node_depth.json",
+        #                     "packet_array_sum60_90sorted_by_subtree_size_dvd_n_children.json",
+        #                     "packet_array_sum60_90_sorted_by_subtree_size.json"]
+        # cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
 
         print(len(cmd_array))
-        cmd_to_cache_size = lambda cmd_str: int(cmd_str.split(' ')[-3])
-        # cmd_array_to_run_files(n_files, cmd_array, lambda_key_sort)
-        MakeRunScript.cmd_array_to_run_files(8, cmd_array, lambda_key_sort=cmd_to_cache_size)
+        print(cmd_array[0])
+        MakeRunScript.cmd_array_to_run_files(5, cmd_array, lambda_key_sort=cmd_to_cache_size)
 
 
 def main():
@@ -605,8 +696,10 @@ def main():
 
     # PlotResultTable.plot_caida_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/6000rules/result_dir/result_tcp.csv")
     # PlotResultTable.plot_caida_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/6000rules/result_dir/result_udp.csv")
-    MakeRunScript.make_OTC()
+    # RunCheck.validate_online_optimal_lpm()
+    MakeRunScript.make_run_sc()
 
 
 if __name__ == "__main__":
     main()
+

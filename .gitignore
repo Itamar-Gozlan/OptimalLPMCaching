@@ -10,4 +10,5 @@ tmp*
 *.jpg
 Figures/
 Caida/
-run_sc/*
+run_sc/
+last_min_additions/

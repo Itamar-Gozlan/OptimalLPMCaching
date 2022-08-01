@@ -88,35 +88,22 @@ class Switch:
 
 
 def online_simulator():
-    # epoch = float(sys.argv[1])
-    # cache_size_percentage = float(sys.argv[2])
-    # opt = eval(sys.argv[3])
-    # with open("../Zipf/prefix_only.txt", 'r') as f:
-    #     policy = f.readlines()
     policy = sys.argv[1]
     packet_trace_json_path = sys.argv[2]
     cache_size = int(sys.argv[3])
     dependency_splice = eval(sys.argv[4])
-    epoch = int(sys.argv[5])
-
-    # with open(policy, 'r') as f:
-    #     policy = f.readlines()
+    epoch = float(sys.argv[5])
 
     with open(policy, 'r') as f:
         policy = json.load(f)
-
-    policy = list(policy.keys())
 
     print("=== Epoch {0}, Cache Size % {1}, Cache Size: {2} Dependency Splice {3} ===".format(epoch,
                                                                                               cache_size / len(policy),
                                                                                               cache_size,
                                                                                               dependency_splice))
-    json_path = "simulator_epoch{0}_cachesizep{1}_cachesize{2}_dependency_splice{3}".format(epoch,
-                                                                                            cache_size / len(policy),
-                                                                                            cache_size,
-                                                                                            dependency_splice) + '.json'
+    # json_path = "simulator_epoch{0}_cachesizep{1}_cachesize{2}_dependency_splice{3}".format(epoch, cache_size /
+    # len(policy), cache_size, dependency_splice) + '.json'
     algorithm = OptimalLPMCache(cache_size, policy, dependency_splice=dependency_splice)  # 5%
-    # algorithm = PowerOfKChoices(cache_size)
     switch = Switch(epoch, cache_size, algorithm)
     clock = 0
     with open(packet_trace_json_path, 'r') as f:
@@ -131,8 +118,8 @@ def online_simulator():
     print(" ")
     print(switch)
 
-    with open('../log/' + json_path, 'w') as f:
-        json.dump(switch.logger.event_logger, f)
+    # with open('../log/' + json_path, 'w') as f:
+    #     json.dump(switch.logger.event_logger, f)
 
 
 def offline_simulator():
@@ -142,9 +129,14 @@ def offline_simulator():
     cache_size = int(sys.argv[3])
     dependency_splice = eval(sys.argv[4])
 
+    print("prefix_weight_json_path : {0}".format(prefix_weight_json_path))
+    print("packet_trace_json_path : {0}".format(packet_trace_json_path))
+
+
+
     with open(prefix_weight_json_path, 'r') as f:
         prefix_weight = json.load(f)
-    threshold = 0
+    threshold = 15
     shorter_prefix_weight = {k: np.int64(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
     # print(len(shorter_prefix_weight))
     t0 = time.time()
@@ -205,9 +197,10 @@ def run_OTC():
 
 def main():
     # online_simulator()
-    # offline_simulator()
-    run_OTC()
+    offline_simulator()
+    # run_OTC()
 
 
 if __name__ == "__main__":
     main()
+

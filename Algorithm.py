@@ -313,6 +313,8 @@ class OnlineTreeCache:
                     self.subtree_size[vtx] += self.subtree_size[sucessor]
 
     def update_subtree_weight(self, vtx, weight):
+        if weight == 0:
+            return
         while self.subtree_size[vtx] <= self.cache_size and len(list(self.policy_tree.predecessors(vtx))) > 0:
             predecessor = list(self.policy_tree.predecessors(vtx))[0]  # one predecessor in a tree
             self.subtree_weight[predecessor] = weight + self.subtree_weight.get(predecessor, 0)
@@ -338,7 +340,7 @@ class OnlineTreeCache:
             if len(self.cache) > self.cache_size:  # flush
                 for rule_to_zero in self.cache - positive_change_set:
                     v = self.rule_to_vertex[rule_to_zero]
-                    self.update_subtree_weight(v, -self.rule_counter[v]) # increasing the subtree weight
+                    self.update_subtree_weight(v, -self.rule_counter.get(v, 0)) # increasing the subtree weight
                     self.rule_counter[v] = 0
                 self.cache = positive_change_set
 
@@ -357,3 +359,4 @@ class PowerOfKChoices(Algorithm):
     def get_cache(self, prefix_weight, ):
         return set((map(lambda v: v[0], sorted(list(prefix_weight.items()),
                                                key=lambda v: v[1], reverse=True)[:self.cache_size])))
+

@@ -60,7 +60,6 @@ class FeasibleSet:
         return FeasibleSet.merge_two_feasible_iset(feasible_iset_x, feasible_iset_y, cache_size)
 
 
-
 class HeuristicLPMCache():
     def __init__(self, cache_size: int, policy: list, dependency_splice=True):
         self.policy_tree, self.rule_to_vertex, self.successors = HeuristicLPMCache.process_policy(policy)
@@ -70,28 +69,6 @@ class HeuristicLPMCache():
         self.dependency_splice = dependency_splice
         self.feasible_set = {}
         self.n_goto_nodes = 0
-
-    def iterative_get_cache(self, prefix_weight):
-        cache = set()
-        local_prefix_weight = copy.deepcopy(prefix_weight)
-        while len(cache) < self.cache_size:
-            self.feasible_set = {}
-            cache_candidate_depth_dict = self.get_cache_candidate_tree(prefix_weight)
-            bottom_up = self.construct_clean_bottom_up_list(cache_candidate_depth_dict, cache)
-            curr_k = max([len(self.successors[v]) for v in bottom_up[:-1]])  # no 0
-            curr_k = min(curr_k, self.cache_size)
-            for v in bottom_up:
-                self.consider_v_for_cache(v, local_prefix_weight, curr_k)
-            cache_add = self.return_cache(curr_k)
-            for pfx in cache_add:
-                if 'goto' in pfx:
-                    pfx = pfx.split('_')[0]
-                if pfx in local_prefix_weight:
-                    del local_prefix_weight[pfx]
-            cache = cache.union(cache_add)
-            if len(local_prefix_weight) == 0:
-                break
-        return cache
 
     def construct_clean_bottom_up_list(self, cache_candidate_depth_dict, cache):
         all_nodes = list(itertools.chain(
@@ -335,7 +312,7 @@ class OnlineTreeCache:
             if len(self.cache) > self.cache_size:  # flush
                 for rule_to_zero in self.cache - positive_change_set:
                     v = self.rule_to_vertex[rule_to_zero]
-                    self.update_subtree_weight(v, -self.rule_counter.get(v, 0)) # increasing the subtree weight
+                    self.update_subtree_weight(v, -self.rule_counter.get(v, 0))  # increasing the subtree weight
                     self.rule_counter[v] = 0
                 self.cache = positive_change_set
 
@@ -346,12 +323,98 @@ class OnlineTreeCache:
                 self.rule_counter[v] = 0
 
 
-class PowerOfKChoices(Algorithm):
-    def __init__(self, cache_size):
-        Algorithm.__init__(self)
-        self.cache_size = cache_size
+# ----------------------- OptimalLPMCache -----------------------
+"""
+r - root to exclude
+"""
 
-    def get_cache(self, prefix_weight, ):
-        return set((map(lambda v: v[0], sorted(list(prefix_weight.items()),
-                                               key=lambda v: v[1], reverse=True)[:self.cache_size])))
 
+class SplicingFeasible:  # (i,l)-feasible solution per vertex X
+    def __init__(self):
+        pass
+
+    def insert(self, r, cache_size, weight):
+        """
+        insert to a (cache_size, r)-feasible set
+        :param r: number of excluded nodes
+        :param cache_size:
+        :param weight: weight to add
+        :return: None
+        """
+        # write it memory efficient
+        pass
+
+    def get_weight(self, i_t, r):
+        pass
+
+    def set_weight(self, i, r, weight):
+        pass
+
+
+# nodes = {v1: SplicingFeasible(), v2: SplicingFeasible,..,vn : SplicingFeasible()}
+
+
+class OptimalLPMCache:
+    """
+    Ideas:
+    Memory optimization - delete pred depth data structures
+    """
+
+    def __init__(self):
+        self.n_successors = {}
+        self.deg_out = {}
+        self.cache_size = 0
+        self.vtx_S = {}
+        self.vtx_Y = {}
+        self.vtx_tilde_Y = {}  # TODO - needed for S(x,j,0)
+
+    def OptDTUnion(self, children_array, vtx):  # return (m,k) collection of SplicingFeasble sets
+        for j in range(1, self.deg_out[vtx]):  # j=1,..,m -> extend solution to include Ty
+            for r in range(0, j):  # number of roots to exclude
+                for i in range(0, self.cache_size + 1):  # possible cache size
+                    i_star, r_star = -1, -1
+                    max_weight = -1
+                    for i_t in range(i):
+                        r_maybe, max_weight_maybe = max(
+                            enumerate(self.vtx_Y[children_array[j - 1]].get_weight(i_t, r - 0) +
+                                      self.vtx_S[children_array[j]].get_weight(i_t, 1),
+                                      self.vtx_Y[children_array[j - 1]].get_weight(i_t, r - 1) +
+                                      self.vtx_S[children_array[j]].get_weight(i_t, 0)),
+                            key=lambda w: w[1])
+                        if max_weight < max_weight_maybe:
+                            i_star = i_t
+                            r_star = r_maybe  # 0 or 1
+                            max_weight = max_weight_maybe
+                    self.vtx_tilde_Y[vtx]
+                    self.vtx_Y[children_array[j]].set_weight(i_star, r_star, max_weight)  # TODO - should be deepcopy
+
+    def apply_on_vtx(self, vtx):
+        if self.deg_out[vtx] == 0:
+            for i in range(self.cache_size):
+                self.vtx_Y[vtx] = SplicingFeasible()
+                self.vtx_Y[vtx].insert(i, 0)  # no descendants hence r = 0
+        else:  # vtx != leaf
+            self.OptDTUnion(self.succesors[vtx], vtx)  # vtx_subtree_Y = Y_tilde # TODO
+            for r in range(0, self.deg_out(vtx)):
+                for i in range(0, self.cache_size + 1):
+                    j_maybe = i + r + 1  # potential cache size to splice -> Y(x,r,j) is defined empty if not feasible
+                    if self.vtx_Y[vtx].get_weight(j_maybe, r) < self.vtx_Y[vtx].get_weight(i, r) + self.vtx_weight[
+                        vtx]:
+                        self.vtx_Y[vtx].set_weight(self.vtx_Y[vtx].get_weight(i, r) + self.vtx_weight[vtx])
+        # initialize S(x,0,j), S(x,1,j)
+        for j in range(0, self.cache_size + 1):
+            r0_star, r1_star = -1, -1
+            r0_star_weight, r1_star_weight = -1, -1
+            S0 = SplicingFeasible()
+            S1 = SplicingFeasible()
+            for r in range(0, self.deg_out(vtx)):
+                if self.vtx_Y[vtx].get_weight(j, r) > r0_star_weight:
+                    r0_star = r
+                    r0_star_weight = self.vtx_Y[vtx].get_weight(j, r)
+                    S0.insert(r0_star, j, r1_star_weight)
+                if self.vtx_Y[vtx].get_weight(j, r) > r1_star_weight:
+                    r1_star = r
+                    r1_star_weight = self.vtx_Y[vtx].get_weight(j, r)
+                    S1.insert(r1_star, j, r1_star_weight)
+
+            self.vtx_S[vtx] = [S0, S1]

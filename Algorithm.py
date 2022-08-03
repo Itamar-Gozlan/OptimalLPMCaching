@@ -60,16 +60,11 @@ class FeasibleSet:
         return FeasibleSet.merge_two_feasible_iset(feasible_iset_x, feasible_iset_y, cache_size)
 
 
-class Algorithm(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def get_cache(self, prefix_weight):
-        pass
 
-
-class OptimalLPMCache(Algorithm):
+class HeuristicLPMCache():
     def __init__(self, cache_size: int, policy: list, dependency_splice=True):
-        self.policy_tree, self.rule_to_vertex, self.successors = OptimalLPMCache.process_policy(policy)
-        self.depth_dict = OptimalLPMCache.construct_depth_dict(self.policy_tree)
+        self.policy_tree, self.rule_to_vertex, self.successors = HeuristicLPMCache.process_policy(policy)
+        self.depth_dict = HeuristicLPMCache.construct_depth_dict(self.policy_tree)
         self.vertex_to_rule = {value: key for key, value in self.rule_to_vertex.items()}
         self.cache_size = cache_size
         self.dependency_splice = dependency_splice
@@ -222,7 +217,7 @@ class OptimalLPMCache(Algorithm):
             max_i = set()
             for j in range(i + 1):
                 max_i = max(max_i, feasible_set_x[j].union(feasible_set_y[i - j]),
-                            key=lambda S: OptimalLPMCache.set_weight(S, prefix_weight))
+                            key=lambda S: HeuristicLPMCache.set_weight(S, prefix_weight))
             feasible_set[i] = max_i
         return feasible_set
 
@@ -241,7 +236,7 @@ class OptimalLPMCache(Algorithm):
         for u in non_relevant_root_children:
             self.policy_tree.remove_edge(ROOT, u)
 
-        depth_dict = OptimalLPMCache.construct_depth_dict(self.policy_tree)
+        depth_dict = HeuristicLPMCache.construct_depth_dict(self.policy_tree)
 
         for u in non_relevant_root_children:
             self.policy_tree.add_edge(ROOT, u)
@@ -278,7 +273,7 @@ class OptimalLPMCache(Algorithm):
 class OnlineTreeCache:
     def __init__(self, policy, cache_size):
         self.subtree_size = None
-        self.policy_tree, self.rule_to_vertex, self.successors = OptimalLPMCache.process_policy(policy)
+        self.policy_tree, self.rule_to_vertex, self.successors = HeuristicLPMCache.process_policy(policy)
         self.vertex_to_rule = {value: key for key, value in self.rule_to_vertex.items()}
         self.construct_subtree_size()
         # for parent, descendant_array in self.successors.items():
@@ -305,7 +300,7 @@ class OnlineTreeCache:
 
     def construct_subtree_size(self):
         self.subtree_size = {}
-        depth_dict = OptimalLPMCache.construct_depth_dict(self.policy_tree)
+        depth_dict = HeuristicLPMCache.construct_depth_dict(self.policy_tree)
         for d in sorted(list(depth_dict.keys()), reverse=True):
             for vtx in depth_dict[d]:
                 self.subtree_size[vtx] = 1

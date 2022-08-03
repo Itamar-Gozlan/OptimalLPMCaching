@@ -103,7 +103,7 @@ def online_simulator():
                                                                                               dependency_splice))
     # json_path = "simulator_epoch{0}_cachesizep{1}_cachesize{2}_dependency_splice{3}".format(epoch, cache_size /
     # len(policy), cache_size, dependency_splice) + '.json'
-    algorithm = OptimalLPMCache(cache_size, policy, dependency_splice=dependency_splice)  # 5%
+    algorithm = HeuristicLPMCache(cache_size, policy, dependency_splice=dependency_splice)  # 5%
     switch = Switch(epoch, cache_size, algorithm)
     clock = 0
     with open(packet_trace_json_path, 'r') as f:
@@ -140,9 +140,9 @@ def offline_simulator():
     shorter_prefix_weight = {k: np.int64(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
     # print(len(shorter_prefix_weight))
     t0 = time.time()
-    opt_cache_algorithm = OptimalLPMCache(cache_size=cache_size,
-                                          policy=list(prefix_weight.keys()),
-                                          dependency_splice=dependency_splice)
+    opt_cache_algorithm = HeuristicLPMCache(cache_size=cache_size,
+                                            policy=list(prefix_weight.keys()),
+                                            dependency_splice=dependency_splice)
     print(time.time() - t0)
     t0 = time.time()
     optimal_offline_cache = opt_cache_algorithm.get_cache(shorter_prefix_weight)

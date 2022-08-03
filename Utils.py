@@ -5,7 +5,7 @@ import ipaddress
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-import pydot
+# import pydot
 from networkx.drawing.nx_pydot import graphviz_layout
 from collections import defaultdict, OrderedDict
 

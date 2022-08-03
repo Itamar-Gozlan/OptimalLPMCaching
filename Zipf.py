@@ -5,7 +5,7 @@ from random import random
 from matplotlib import pyplot as plt
 import numpy as np
 import json
-from Algorithm import OptimalLPMCache
+from Algorithm import HeuristicLPMCache
 import os
 
 
@@ -23,9 +23,9 @@ class NodeData:
     @staticmethod
     def construct_node_data_dict(policy):
         policy = list(map(lambda s: s.strip(), policy))
-        policy_tree, rule_to_vertex, successors = OptimalLPMCache.process_policy(policy)
+        policy_tree, rule_to_vertex, successors = HeuristicLPMCache.process_policy(policy)
         vertex_to_rule = {value: key for key, value in rule_to_vertex.items()}
-        depth_dict = OptimalLPMCache.construct_depth_dict(policy_tree)
+        depth_dict = HeuristicLPMCache.construct_depth_dict(policy_tree)
         # Looking for nodes with low count of successors and big subtrees
         data_dict = {}
         for depth in sorted(list(depth_dict.keys()), reverse=True):
@@ -171,7 +171,7 @@ def generate_sorted_traces():
         prefix_array = f.readlines()
     prefix_array = list(map(lambda st: st.strip(), prefix_array))
 
-    T, rule_to_vertex, successors = OptimalLPMCache.process_policy(prefix_array)
+    T, rule_to_vertex, successors = HeuristicLPMCache.process_policy(prefix_array)
     vertex_to_rule = {v: k for k, v in rule_to_vertex.items()}
 
     head = list(filter(lambda v: bottom <= len(successors[v]) <= top, successors.keys()))

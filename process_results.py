@@ -1,15 +1,17 @@
 import json
 import os
+import sys
 
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
-from Zipf import produce_packet_array_of_prefix_weight
+from Zipf import produce_packet_array_of_prefix_weight, NodeData
 import Utils
 from Algorithm import *
 import time
 import pandas as df
+import seaborn as sns
 
 ROOT = 0
 ROOT_PREFIX = '0.0.0.0/0'
@@ -48,7 +50,7 @@ class RunCheck:
         # plt.show()
         weights_up_to_i = {}
         for i in range(len(packet_trace)):
-            offline = OptimalLPMCache(cache_size, policy, dependency_splice)
+            offline = HeuristicLPMCache(cache_size, policy, dependency_splice)
             online = OnlineOptimalLPMCache(cache_size, policy, dependency_splice)
             weights_up_to_i = {}
             for packet in packet_trace[:i + 1]:
@@ -90,7 +92,7 @@ class RunCheck:
         # print(policy)
         cache_size = 256
         # policy = [Utils.binary_lpm_to_str(s) for s in Utils.compute_random_policy(10000)]
-        OptLPMAlg = OptimalLPMCache(cache_size, policy, dependency_splice=True)
+        OptLPMAlg = HeuristicLPMCache(cache_size, policy, dependency_splice=True)
 
         if '0.0.0.0/0' not in policy:
             policy.append("0.0.0.0/0")
@@ -136,7 +138,7 @@ class RunCheck:
             policy = f.readlines()
 
         cache_size = 10
-        OptLPMAlg = OptimalLPMCache(cache_size, policy, dependency_splice=True)
+        OptLPMAlg = HeuristicLPMCache(cache_size, policy, dependency_splice=True)
 
         child_histogram_data = sorted([len(OptLPMAlg.successors[v]) for v in OptLPMAlg.successors])
 
@@ -232,7 +234,7 @@ class ResultToTable:
                     # cache_size = dirpath.split('_')[1]
                     # dependency = dirpath.split('_')[2]
                     # zipf_distribution = '_'.join(dirpath.split('_')[3:5])
-
+                    #
                     # row = {"Zipf" : zipf_distribution,
                     #        "Cache Size": cache_size,
                     #        "Splice": dependency,
@@ -249,9 +251,9 @@ class ResultToTable:
                            'Hit Rate': data[-1].split(" ")[-1]}
 
                     df = df.append(row, ignore_index=True)
-                else:
-                    print("Missing: {0}".format(dirpath))
-                    missing_result_array.append(dirpath)
+                # else:
+                #     print("Missing: {0}".format(dirpath))
+                #     missing_result_array.append(dirpath)
 
         # for missing_result in missing_result_array:
         #     b, t, cs, opt = missing_result.split('_')[3:]
@@ -265,6 +267,30 @@ class ResultToTable:
 
 class PlotResultTable:
     @staticmethod
+    def plot_true_false_df(true_df, false_df, path_to_save, ylim=[0, 80]):
+        fig, ax = plt.subplots()
+        ax.plot(list(map(str, true_df['Cache Size'])), list(map(lambda v: 100 - v, true_df['Hit Rate'])), marker="s",
+                markersize=14, label="OptSplice'")
+        ax.plot(list(map(str, false_df['Cache Size'])), list(map(lambda v: 100 - v, false_df['Hit Rate'])), marker="o",
+                markersize=14, label="OptLocal")
+        xy_label_font_size = 28
+        ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax.set_yticks([0, 20, 40, 60, 80, 100])
+        ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
+
+        ax.set_ylabel('Cache Miss (%)', fontsize=xy_label_font_size)
+        ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
+        ax.set_ylim(ylim)
+        ax.legend(prop=dict(size=24))
+        ax.grid(True)
+
+        fig.tight_layout()
+        print(path_to_save)
+        h = 4
+        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+        fig.savefig(path_to_save, dpi=300)
+
+    @staticmethod
     def plot_range_result_table(csv_path):
         df = pd.read_csv(csv_path)
         cache_size_array = sorted(list(df['Cache Size'].drop_duplicates()))
@@ -276,33 +302,7 @@ class PlotResultTable:
             true_df = res_df[(res_df['Splice'] == True)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
             false_df = res_df[(res_df['Splice'] == False)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
 
-            fig, ax = plt.subplots()
-            ax.plot(list(map(str, true_df['Cache Size'])), true_df['Hit Rate'], marker="d", label="Dependency Splice")
-            ax.plot(list(map(str, false_df['Cache Size'])), false_df['Hit Rate'], marker="o", label="Without Splice")
-            # if bottom < top:
-            #     ax.set_title("Heaviest Nodes: {0} <= degree <= {1}".format(bottom, top))
-            # else:
-            #     ax.set_title("Random Zipf".format(bottom, top))
-            xy_label_font_size = 28
-            # ax.set_yticklabels(fontsize=24)
-            # ax.set_xticklabels(fontsize=24)
-            ax.xaxis.set_tick_params(labelsize=16)
-            ax.yaxis.set_tick_params(labelsize=16)
-
-            ax.set_ylabel('Cache Hit (%)', fontsize=xy_label_font_size)
-            ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
-            ax.set_ylim([10, 100])
-            ax.legend()
-
-            experiment_name = "run_sc_local/2707_sum60_90_result.csv".split('/')[-1].replace('_result.csv', '')
-            # path_to_save = 'Figures/{0}'.format(experiment_name)
-            # if not os.path.exists(path_to_save):
-            #     os.makedirs(path_to_save)
-            filename = csv_path.split('/')[-1]
-            path_to_save = csv_path.replace(filename, '') + '/b{0}_t{1}.jpg'.format(bottom, top)
-            fig.tight_layout()
-            print(path_to_save)
-            fig.savefig(path_to_save, dpi=300)
+        PlotResultTable.plot_true_false_df(true_df, false_df, csv_path.replace('csv', 'jpg'))
 
         print("s")
 
@@ -313,54 +313,163 @@ class PlotResultTable:
         true_df = df[(df['Splice'] == True)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
         false_df = df[(df['Splice'] == False)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
 
-        fig, ax = plt.subplots()
-        ax.plot(list(map(str, true_df['Cache Size'])), true_df['Hit Rate'], marker="d", label="Dependency Splice")
-        ax.plot(list(map(str, false_df['Cache Size'])), false_df['Hit Rate'], marker="o", label="Without Splice")
-
-        xy_label_font_size = 28
-        ax.xaxis.set_tick_params(labelsize=16)
-        ax.yaxis.set_tick_params(labelsize=16)
-
-        ax.set_ylabel('Cache Hit (%)', fontsize=xy_label_font_size)
-        ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
-        ax.set_ylim([0, 100])
-        ax.legend()
-        fig.tight_layout()
-        print(csv_path.replace('csv', 'jpg'))
-        sort_type = csv_path.split('/')[-3]
-        csv_dir_split, csv_name = csv_path.split('/')[:-1], csv_path.split('/')[-1]
-        path_to_save = "/".join(csv_dir_split + [csv_name.replace('.csv', '_{0}.jpg'.format(sort_type))])
-        print(path_to_save)
-        fig.savefig(path_to_save, dpi=300)
-
-        print("s")
+        PlotResultTable.plot_true_false_df(true_df, false_df, csv_path.replace('csv', 'jpg'))
 
     @staticmethod
-    def plot_caida_result_table(csv_path):
-        df = pd.read_csv(csv_path)
+    def calculate_and_save_bar_data(policy_json_path, prefix2weight_json_path, height2weight_histogram_json_path):
+        with open(policy_json_path, 'r') as f:
+            policy = json.load(f)
 
-        true_df = df[(df['Splice'] == True)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
-        false_df = df[(df['Splice'] == False)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
+        with open(prefix2weight_json_path, 'r') as f:
+            prefix2weight = json.load(f)
+
+        node_data_dict, vertex_to_rule = NodeData.construct_node_data_dict(policy)
+
+        height2weight_histogram = {}
+        count_node_in_depth = {}
+        for node in node_data_dict.values():
+            weight = prefix2weight[vertex_to_rule[node.v]]
+            # height2weight_histogram[node.subtree_depth] = int(weight) + height2weight_histogram.get(node.subtree_depth, 0)
+            height2weight_histogram[node.subtree_depth] = node.subtree_size + height2weight_histogram.get(
+                node.subtree_depth, 0)
+            count_node_in_depth[node.subtree_depth] = 1 + count_node_in_depth.get(node.subtree_depth, 0)
+
+        average_tree_size_for_depth = {depth: total_size / count_node_in_depth[depth] for depth, total_size in
+                                       height2weight_histogram.items()}
+        with open(height2weight_histogram_json_path, 'w') as f:
+            json.dump(average_tree_size_for_depth, f)
+
+    @staticmethod
+    def plot_bar(x_data, y_data, path_to_save):
 
         fig, ax = plt.subplots()
-        ax.plot(list(map(str, true_df['Cache Size'])), true_df['Hit Rate'], marker="d", label="Dependency Splice")
-        ax.plot(list(map(str, false_df['Cache Size'])), false_df['Hit Rate'], marker="o", label="Without Splice")
+        ax.bar(x_data, y_data)
+        xy_label_font_size = 25
+        ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        # ax.set_yticks([1, 2, 3, 4, 5])
+        ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
 
-        p = list(df['Dependent Rule'].drop_duplicates())[0]
-        # ax.set_title("Caida trace 6k rules with \n  Dependent Rule: {0}".format(p))
+        ax.set_ylabel('Average subtree size', fontsize=xy_label_font_size)
+        ax.set_xlabel("Height", fontsize=xy_label_font_size)
+        ax.set_yscale('log', basey=2)
 
-        xy_label_font_size = 28
-        ax.xaxis.set_tick_params(labelsize=16)
-        ax.yaxis.set_tick_params(labelsize=16)
+        ax.set_ylim([1, 300])
+        # ax.legend(prop=dict(size=24))
+        ax.grid(True)
 
-        ax.set_ylabel('Cache Hit (%)', fontsize=xy_label_font_size)
-        ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
-        ax.set_ylim([35, 100])
-        ax.legend()
         fig.tight_layout()
-        fig.savefig(csv_path.replace('csv', 'jpg'))
+        print(path_to_save)
 
-        print("s")
+        # fig.set_size_inches(magic_height * w / (h * dpi), magic_height / dpi)
+        h = 4
+        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+        fig.savefig(path_to_save, dpi=300)
+
+    @staticmethod
+    def plot_weight_bar(height2weight_histogram_json_path, path_to_save):
+        with open(height2weight_histogram_json_path, 'r') as f:
+            height2weight_histogram = json.load(f)
+
+        sum_tot = sum(height2weight_histogram.values())
+        x_data = list(map(lambda x: str(int(x) - 1), list(height2weight_histogram.keys())))
+        # y_data = [x * 100 / sum_tot for x in list(height2weight_histogram.values())]
+        y_data = list(height2weight_histogram.values())
+        PlotResultTable.plot_bar(x_data[:-1], y_data[:-1], path_to_save)
+
+    @staticmethod
+    def calculate_and_save_bin_bar_data_subtree_size(policy_json_path, path2save):
+        with open(policy_json_path, 'r') as f:
+            policy = json.load(f)
+
+        node_data_dict, vertex_to_rule = NodeData.construct_node_data_dict(policy)
+        height2weight_histogram = {}
+        for node in node_data_dict.values():
+            subtree_size = node.subtree_size
+            height2weight_histogram[node.subtree_depth] = subtree_size + height2weight_histogram.get(node.subtree_depth,
+                                                                                                     0)
+        print("Saving: {0}".format(path2save))
+        with open(path2save, 'w') as f:
+            json.dump(height2weight_histogram, f)
+
+    @staticmethod
+    def plot_subtree_bar(subtree_size_histrogram_json_path, path_to_save_fig):
+        with open(subtree_size_histrogram_json_path, 'r') as f:
+            st_hist = json.load(f)
+        low = 1
+        high = 2
+        # range [1,2)
+        bin_hist = {}
+        for subtree_size, count in sorted(st_hist.items(), key=lambda x: x[0]):
+            while int(subtree_size) >= high:
+                low = high
+                high *= 2
+            bin_hist[(low, high)] = count + bin_hist.get((low, high), 0)
+
+        print("s {0}".format(sys._getframe(1).f_lineno))
+        x_data = list(map(lambda b_t: str(b_t).replace('(', '['), bin_hist.keys()))
+        y_data = list(bin_hist.values())
+        PlotResultTable.plot_bar(x_data, y_data, path_to_save_fig)
+
+    @staticmethod
+    def plot_heatmap(policy_json, prefix_weight_json, path_to_save):
+        with open(policy_json, 'r') as f:
+            policy = json.load(f)
+        node_data_dict, vertex_to_rule = NodeData.construct_node_data_dict(policy)
+        rule_to_vertex = {v :k for k,v in vertex_to_rule.items()}
+
+        with open(prefix_weight_json, 'r') as f:
+            prefix_weight = json.load(f)
+
+
+        node_height = {v : node_data_dict[v].subtree_depth for v in node_data_dict}
+        bin = 0
+        # log2_y = [0.45, 0.9, 1]
+        # log2_y = np.linspace(0,1,4)
+        # log2_y = [0.5, 0.75, 0.85, 1]
+        # log2_y = [0.5, 0.75,. ]
+        # z = [1, 0.5, 0.25, 0.125]
+        # log2_y = [0.5, 0.75, 0.875, 0.9375]
+        log2_y = [0.001, 1]#0.75, 0.875, 0.9375]#, 0.96875, 0.984375, 0.9921875]
+        log2_y = []
+        # log2_y = [1-(1/2)**i for i in range(8)]
+        sum_total = sum(prefix_weight.values())
+
+        n_rows = len(log2_y)
+        n_cols = len(set(node_height.values()))
+        heatmap_data = np.zeros((n_rows, n_cols))
+        for prefix, weight in sorted(prefix_weight.items(), key=lambda key: key[1]):
+            height = node_height.get(rule_to_vertex[prefix],0)
+            traffic_p = weight/sum_total
+            while traffic_p > log2_y[bin]:
+                bin += 1
+            # found rule with weight in bin
+            heatmap_data[bin][height - 1] += 1
+
+        np.save(path_to_save, heatmap_data)
+        # heatmap_data = np.load(path_to_save)
+
+        ax = sns.heatmap(heatmap_data)
+        xy_label_font_size = 10
+        ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        # ax.set_yticks(list(map(lambda v : str(v), log2_y)))
+        ax.set_yticklabels(log2_y)
+        ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
+
+        ax.set_ylabel('Traffic (%)', fontsize=xy_label_font_size)
+        ax.set_xlabel("Subtree height", fontsize=xy_label_font_size)
+        # ax.set_yscale('log')
+        # ax.set_ylim(ylim)
+        # ax.legend(prop=dict(size=24))
+        # ax.grid(True)
+
+        plt.show()
+
+        # fig.tight_layout()
+        # print(path_to_save)
+        # h = 4
+        # fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+        # fig.savefig(path_to_save, dpi=300)
+
 
 
 class MakeRunScript:
@@ -621,9 +730,9 @@ class MakeRunScript:
         trace_name_array = ["zipf_trace_10_50_packet_array.json",
                             "zipf_trace_1_0_packet_array.json",
                             "zipf_trace_20_50_packet_array.json",
-                             "zipf_trace_2_50_packet_array.json",
-                             "zipf_trace_30_50_packet_array.json",
-                             "zipf_trace_40_50_packet_array.json"]
+                            "zipf_trace_2_50_packet_array.json",
+                            "zipf_trace_30_50_packet_array.json",
+                            "zipf_trace_40_50_packet_array.json"]
         cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
 
         policy_json_path = "caida_traceUDP_policy.json"
@@ -660,7 +769,8 @@ class MakeRunScript:
         MakeRunScript.cmd_array_to_run_files(5, cmd_array, lambda_key_sort=cmd_to_cache_size)
 
 
-def main():
+def place_holder():
+    pass
     # PlotResultTable.plot_range_result_table("Figures/2707_results/offline_sum60_90/offline_sum60_90_result.csv")
 
     # format_result_into_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/special_sort/sum60_70_sorted_by_subtree_size")
@@ -697,9 +807,105 @@ def main():
     # PlotResultTable.plot_caida_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/6000rules/result_dir/result_tcp.csv")
     # PlotResultTable.plot_caida_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/6000rules/result_dir/result_udp.csv")
     # RunCheck.validate_online_optimal_lpm()
-    MakeRunScript.make_run_sc()
+    # MakeRunScript.make_run_sc()
 
+
+# ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/sorted_by_depth/sum60_70')
+
+# ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/UDP')
+# ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/TCP')
+
+def cache_miss_main():
+    PlotResultTable.plot_range_result_table(
+        "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/b1_t0/b1_t0.csv")
+    PlotResultTable.plot_special_sort_result_table(
+        "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/sorted_by_depth/sum60_70/sum60_70.csv")
+    PlotResultTable.plot_special_sort_result_table(
+        "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/UDP/UDP.csv")
+    PlotResultTable.plot_special_sort_result_table(
+        "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/TCP/TCP.csv")
+
+def calculate_bar_data():
+    hisogram_json_array = []
+    base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/"
+    # policy = base + "bar_weight_data/caida_traceUDP_policy.json"
+    # prefix2weight = base + 'bar_weight_data/caida_traceUDP_prefix_weight.json'
+    # height2weight_histogram_json_path = base + "bar_weight_data/UDP_height2weight_histogram.json"
+    # # PlotResultTable.calculate_and_save_bar_data(policy, prefix2weight, height2weight_histogram_json_path)
+    # hisogram_json_array.append(height2weight_histogram_json_path)
+    #
+    # policy = base + "bar_weight_data/caida_traceTCP_policy.json"
+    prefix2weight = base + 'bar_weight_data/caida_traceTCP_prefix_weight.json'
+    height2weight_histogram_json_path = base + "bar_weight_data/TCP_height2weight_histogram.json"
+    # PlotResultTable.calculate_and_save_bar_data(policy, prefix2weight, height2weight_histogram_json_path)
+    hisogram_json_array.append(height2weight_histogram_json_path)
+    #
+    # base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/"
+    # policy = base + "bar_weight_data/prefix_only.json"
+    # # prefix2weight = base + 'bar_weight_data/prefix2weight_sum60_70sorted_by_node_depth.json'
+    # height2weight_histogram_json_path = base + "bar_weight_data/sum60_70sorted_by_node_depth_height2weight_histogram.json"
+    # # PlotResultTable.calculate_and_save_bar_data(policy, prefix2weight, height2weight_histogram_json_path)
+    # hisogram_json_array.append(height2weight_histogram_json_path)
+    #
+    prefix2weight = base + 'bar_weight_data/zipf_trace_1_0_prefix2weight.json'
+    height2weight_histogram_json_path = base + "bar_weight_data/zipf_trace_1_0_prefix2weight_height2weight_histogram.json"
+    # PlotResultTable.calculate_and_save_bar_data(policy, prefix2weight, height2weight_histogram_json_path)
+    hisogram_json_array.append(height2weight_histogram_json_path)
+
+    return hisogram_json_array
+
+
+
+
+
+def bar_plot_main():
+    base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/bar_plot/"
+    path2save_arr = [
+                      # 'caida_traceUDP_prefix_weight.jpg',
+                     'caida_traceTCP_prefix_weight.jpg',
+                     # 'prefix2weight_sum60_70sorted_by_node_depth.jpg'
+                     'zipf_trace_1_0_prefix2weight.jpg'
+                     ]
+    hisogram_json_array = calculate_bar_data()
+    for hisogram_json, path2save in zip(hisogram_json_array, path2save_arr):
+        PlotResultTable.plot_weight_bar(hisogram_json, base + path2save)
+
+def create_heatmap():
+    base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/"
+    policy = base + "bar_weight_data/caida_traceUDP_policy.json"
+    prefix2weight = base + 'bar_weight_data/caida_traceUDP_prefix_weight.json'
+    UDP_heatmap_data = base + "bar_weight_data/UDP_heatmap_data.npy"
+    PlotResultTable.plot_heatmap(policy, prefix2weight, UDP_heatmap_data)
+
+
+
+
+
+def main():
+
+    # bar_plot_main() # plot_weight_bar
+
+
+    """
+
+    base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/"
+    policy = base + "bar_weight_data/caida_traceUDP_policy.json"
+    json_path = base + 'subtree_size/caida_traceUDP.json'
+    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
+    PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
+
+    policy = base + "bar_weight_data/caida_traceTCP_policy.json"
+    json_path = base + 'subtree_size/caida_traceTCP.json'
+    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
+    PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
+
+    # policy = base + "bar_weight_data/prefix_only.json"
+    # json_path = base + 'subtree_size/stanford_backbone.json'
+    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
+    # PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
+    """
+
+    cache_miss_main()
 
 if __name__ == "__main__":
     main()
-

@@ -72,7 +72,7 @@ def construct_tree(policy):
     rule_to_vertex_binary = recover(T)
     T.remove_node(-1)
     compress_prefix_tree(T, final_nodes)
-    rule_to_vertex_ip4network = {binary_lpm_to_str(rule): v for rule, v in rule_to_vertex_binary.items()}
+    rule_to_vertex = {binary_lpm_to_str(rule): v for rule, v in rule_to_vertex_binary.items()}
 
     successors = {}
     for node in T.nodes:
@@ -88,7 +88,7 @@ def construct_tree(policy):
             successors[pred_node] = [node]
         successors[node] = []
 
-    return T, rule_to_vertex_ip4network, successors
+    return T, rule_to_vertex, successors
 
 
 def astrix(rule):

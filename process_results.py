@@ -20,25 +20,16 @@ ROOT_PREFIX = '0.0.0.0/0'
 class RunCheck:
     @staticmethod
     def get_random_policy_and_weight():
-        # policy = [Utils.binary_lpm_to_str(s) for s in Utils.compute_random_policy(15)]
-        # policy_weight = {k.strip(): np.random.randint(100) for k in policy}
-        # print("policy = {0}".format(policy))
-        # print("policy_weight = {0}".format(policy_weight))
-        policy = ['237.200.0.0/15', '107.236.0.0/14', '239.128.0.0/10', '59.168.0.0/14', '89.0.0.0/10',
-                  '199.156.64.0/19', '145.0.0.0/8', '145.40.0.0/13', '160.0.0.0/5', '192.0.0.0/2', '134.164.0.0/16',
-                  '253.221.140.172/32', '51.0.0.0/8', '0.64.0.0/10', '158.7.193.96/29']
-        policy_weight = {'237.200.0.0/15': 33, '107.236.0.0/14': 80, '239.128.0.0/10': 9, '59.168.0.0/14': 0,
-                         '89.0.0.0/10': 63, '199.156.64.0/19': 62, '145.0.0.0/8': 58, '145.40.0.0/13': 92,
-                         '160.0.0.0/5': 83, '192.0.0.0/2': 45, '134.164.0.0/16': 28, '253.221.140.172/32': 9,
-                         '51.0.0.0/8': 46, '0.64.0.0/10': 20, '158.7.193.96/29': 47}
+        policy = [Utils.binary_lpm_to_str(s) for s in Utils.compute_random_policy(15)]
+        policy_weight = {k.strip(): np.random.randint(100) for k in policy}
+        print("policy = {0}".format(policy))
+        print("policy_weight = {0}".format(policy_weight))
 
         if '0.0.0.0/0' not in policy:
             policy.append("0.0.0.0/0")
         policy_weight['0.0.0.0/0'] = 0
-        # packet_trace = produce_packet_array_of_prefix_weight(policy_weight)
-        packet_trace = ['51.0.0.0/8', '134.164.0.0/16', '160.0.0.0/5', '145.40.0.0/13', '134.164.0.0/16',
-                        '253.221.140.172/32', '145.40.0.0/13', '192.0.0.0/2', '145.0.0.0/8', '145.40.0.0/13']
-        return policy, policy_weight, packet_trace
+
+        return policy, policy_weight
 
     @staticmethod
     def validate_online_optimal_lpm():
@@ -82,15 +73,6 @@ class RunCheck:
         condition = False
         # while not condition:
         # policy = [Utils.binary_lpm_to_str(s) for s in Utils.compute_random_policy(10000)]
-        with open('Caida/6000rules/caida_traceTCP_policy.json', 'r') as f:
-            policy = json.load(f)
-        # policy = {k: v.strip() for k,v in policy.items()}
-        # policy = open('../Zipf/prefix_only.txt', 'r').read().splitlines()
-        # with open('../Zipf/sorted_prefix_with_weights.json', 'r') as f:
-        #     policy_weight = json.load(f)
-        res = []
-        # print(policy)
-        cache_size = 256
         # policy = [Utils.binary_lpm_to_str(s) for s in Utils.compute_random_policy(10000)]
         OptLPMAlg = HeuristicLPMCache(cache_size, policy, dependency_splice=True)
 
@@ -182,6 +164,37 @@ class RunCheck:
             feasible_set_array.append(fs)
 
         X = FeasibleSet.OptDTUnion(feasible_set_array, cache_size)
+
+    @staticmethod
+    def test_random_OptLPM():
+        # policy, policy_weight = RunCheck.get_random_policy_and_weight()
+        policy_weight = {"0.0.0.0/0": 0,
+                         # "10.0.0.0/18": 12,  # R1
+                         # "10.0.0.0/20": 17,  # R2
+                         "10.0.64.0/18": 25,  # R3
+                         # "10.0.64.0/20": 3,  # R4
+                         "10.0.64.0/22": 5,  # R5
+                         # "10.0.80.0/22": 10,  # R6
+                         "10.0.80.0/24": 15  # R7
+                         }
+
+        prefix_to_rule_name = {"0.0.0.0/0": "R0",
+                               # "10.0.0.0/18": "R1",
+                               # "10.0.0.0/20": "R2",
+                               "10.0.64.0/18": "R3",
+                               # "10.0.64.0/20": "R4",
+                               "10.0.64.0/22": "R5",
+                               # "10.0.80.0/22": "R6",
+                               "10.0.80.0/24": "R7"}
+        policy = list(policy_weight.keys())
+        cache_size = 4
+        algorithm = OptimalLPMCache(policy, policy_weight, cache_size)
+        algorithm.get_optimal_cache()
+        labels = {v: "{0}, {1}".format(prefix_to_rule_name[algorithm.vertex_to_rule[v]], policy_weight[algorithm.vertex_to_rule[v]])
+                  for v in algorithm.policy_tree.nodes}
+        # nx.draw(algorithm.policy_tree, labels=labels)
+        Utils.draw_tree(algorithm.policy_tree, labels)
+        plt.show()
 
 
 class ResultToTable:
@@ -415,13 +428,12 @@ class PlotResultTable:
         with open(policy_json, 'r') as f:
             policy = json.load(f)
         node_data_dict, vertex_to_rule = NodeData.construct_node_data_dict(policy)
-        rule_to_vertex = {v :k for k,v in vertex_to_rule.items()}
+        rule_to_vertex = {v: k for k, v in vertex_to_rule.items()}
 
         with open(prefix_weight_json, 'r') as f:
             prefix_weight = json.load(f)
 
-
-        node_height = {v : node_data_dict[v].subtree_depth for v in node_data_dict}
+        node_height = {v: node_data_dict[v].subtree_depth for v in node_data_dict}
         bin = 0
         # log2_y = [0.45, 0.9, 1]
         # log2_y = np.linspace(0,1,4)
@@ -429,7 +441,7 @@ class PlotResultTable:
         # log2_y = [0.5, 0.75,. ]
         # z = [1, 0.5, 0.25, 0.125]
         # log2_y = [0.5, 0.75, 0.875, 0.9375]
-        log2_y = [0.001, 1]#0.75, 0.875, 0.9375]#, 0.96875, 0.984375, 0.9921875]
+        log2_y = [0.001, 1]  # 0.75, 0.875, 0.9375]#, 0.96875, 0.984375, 0.9921875]
         log2_y = []
         # log2_y = [1-(1/2)**i for i in range(8)]
         sum_total = sum(prefix_weight.values())
@@ -438,8 +450,8 @@ class PlotResultTable:
         n_cols = len(set(node_height.values()))
         heatmap_data = np.zeros((n_rows, n_cols))
         for prefix, weight in sorted(prefix_weight.items(), key=lambda key: key[1]):
-            height = node_height.get(rule_to_vertex[prefix],0)
-            traffic_p = weight/sum_total
+            height = node_height.get(rule_to_vertex[prefix], 0)
+            traffic_p = weight / sum_total
             while traffic_p > log2_y[bin]:
                 bin += 1
             # found rule with weight in bin
@@ -469,7 +481,6 @@ class PlotResultTable:
         # h = 4
         # fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
         # fig.savefig(path_to_save, dpi=300)
-
 
 
 class MakeRunScript:
@@ -809,11 +820,33 @@ def place_holder():
     # RunCheck.validate_online_optimal_lpm()
     # MakeRunScript.make_run_sc()
 
+    # ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/sorted_by_depth/sum60_70')
 
-# ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/sorted_by_depth/sum60_70')
+    # ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/UDP')
+    # ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/TCP')
+    # bar_plot_main() # plot_weight_bar
 
-# ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/UDP')
-# ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/TCP')
+    """
+
+    base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/"
+    policy = base + "bar_weight_data/caida_traceUDP_policy.json"
+    json_path = base + 'subtree_size/caida_traceUDP.json'
+    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
+    PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
+
+    policy = base + "bar_weight_data/caida_traceTCP_policy.json"
+    json_path = base + 'subtree_size/caida_traceTCP.json'
+    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
+    PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
+
+    # policy = base + "bar_weight_data/prefix_only.json"
+    # json_path = base + 'subtree_size/stanford_backbone.json'
+    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
+    # PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
+    """
+
+    cache_miss_main()
+
 
 def cache_miss_main():
     PlotResultTable.plot_range_result_table(
@@ -824,6 +857,7 @@ def cache_miss_main():
         "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/UDP/UDP.csv")
     PlotResultTable.plot_special_sort_result_table(
         "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/TCP/TCP.csv")
+
 
 def calculate_bar_data():
     hisogram_json_array = []
@@ -855,20 +889,18 @@ def calculate_bar_data():
     return hisogram_json_array
 
 
-
-
-
 def bar_plot_main():
     base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/bar_plot/"
     path2save_arr = [
-                      # 'caida_traceUDP_prefix_weight.jpg',
-                     'caida_traceTCP_prefix_weight.jpg',
-                     # 'prefix2weight_sum60_70sorted_by_node_depth.jpg'
-                     'zipf_trace_1_0_prefix2weight.jpg'
-                     ]
+        # 'caida_traceUDP_prefix_weight.jpg',
+        'caida_traceTCP_prefix_weight.jpg',
+        # 'prefix2weight_sum60_70sorted_by_node_depth.jpg'
+        'zipf_trace_1_0_prefix2weight.jpg'
+    ]
     hisogram_json_array = calculate_bar_data()
     for hisogram_json, path2save in zip(hisogram_json_array, path2save_arr):
         PlotResultTable.plot_weight_bar(hisogram_json, base + path2save)
+
 
 def create_heatmap():
     base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/"
@@ -878,34 +910,9 @@ def create_heatmap():
     PlotResultTable.plot_heatmap(policy, prefix2weight, UDP_heatmap_data)
 
 
-
-
-
 def main():
+    RunCheck.test_random_OptLPM()
 
-    # bar_plot_main() # plot_weight_bar
-
-
-    """
-
-    base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/"
-    policy = base + "bar_weight_data/caida_traceUDP_policy.json"
-    json_path = base + 'subtree_size/caida_traceUDP.json'
-    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
-    PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
-
-    policy = base + "bar_weight_data/caida_traceTCP_policy.json"
-    json_path = base + 'subtree_size/caida_traceTCP.json'
-    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
-    PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
-
-    # policy = base + "bar_weight_data/prefix_only.json"
-    # json_path = base + 'subtree_size/stanford_backbone.json'
-    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
-    # PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
-    """
-
-    cache_miss_main()
 
 if __name__ == "__main__":
     main()

@@ -4,6 +4,7 @@ from Utils import construct_tree
 import networkx as nx
 import itertools
 import copy
+import numpy as np
 
 ROOT = 0
 ROOT_PREFIX = '0.0.0.0/0'
@@ -240,7 +241,7 @@ class HeuristicLPMCache():
             ip, mask = prefix.split('/')
             binary_policy.append("{:032b}".format(int(ipaddress.IPv4Address(ip)))[:int(mask)])
 
-        return construct_tree(binary_policy)
+        return construct_tree(binary_policy)  # return: T, rule_to_vertex, successors
 
     @staticmethod
     def set_weight(S, prefix_weight):
@@ -329,92 +330,94 @@ r - root to exclude
 """
 
 
-class SplicingFeasible:  # (i,l)-feasible solution per vertex X
-    def __init__(self):
-        pass
-
-    def insert(self, r, cache_size, weight):
-        """
-        insert to a (cache_size, r)-feasible set
-        :param r: number of excluded nodes
-        :param cache_size:
-        :param weight: weight to add
-        :return: None
-        """
-        # write it memory efficient
-        pass
-
-    def get_weight(self, i_t, r):
-        pass
-
-    def set_weight(self, i, r, weight):
-        pass
-
-
-# nodes = {v1: SplicingFeasible(), v2: SplicingFeasible,..,vn : SplicingFeasible()}
-
-
 class OptimalLPMCache:
     """
     Ideas:
-    Memory optimization - delete pred depth data structures
+    Memory optimization - delete pred depth data structure
+    cut loops
+    Don't run OptDTUnion of leaves
+    Don't keep 0 results
     """
 
-    def __init__(self):
-        self.n_successors = {}
-        self.deg_out = {}
-        self.cache_size = 0
+    def __init__(self, policy, prefix_weight, cache_size):
+        self.policy_tree, self.rule_to_vertex, self.successors = HeuristicLPMCache.process_policy(policy)
+        self.vertex_to_rule = {value: key for key, value in self.rule_to_vertex.items()}
+        self.depth_dict = HeuristicLPMCache.construct_depth_dict(self.policy_tree)
+        self.deg_out = {v: self.policy_tree.out_degree(v) for v in self.policy_tree.nodes}
+        self.node_weight = {v: prefix_weight[self.vertex_to_rule[v]] for v in self.policy_tree.nodes}
+        self.cache_size = cache_size
         self.vtx_S = {}
         self.vtx_Y = {}
         self.vtx_tilde_Y = {}  # TODO - needed for S(x,j,0)
 
     def OptDTUnion(self, children_array, vtx):  # return (m,k) collection of SplicingFeasble sets
-        for j in range(1, self.deg_out[vtx]):  # j=1,..,m -> extend solution to include Ty
-            for r in range(0, j):  # number of roots to exclude
+        Y_data = {(0, 0, i): 0 for i in range(self.cache_size)}  # (j,r,i)
+        for j in range(1, self.deg_out[vtx] + 1):  # j=1,..,m -> extend solution to include Ty
+            for r in range(0, j + 1):  # number of roots to exclude
                 for i in range(0, self.cache_size + 1):  # possible cache size
-                    i_star, r_star = -1, -1
+                    if (j, r, i) == (2, 1, 2):
+                        print("s") # (1,1,1) should be 15? Yes!
+                    if (j, r, i) == (1, 1, 1):
+                        print("s")
                     max_weight = -1
+                    i_star, r_star = -1, -1
                     for i_t in range(i):
-                        r_maybe, max_weight_maybe = max(
-                            enumerate(self.vtx_Y[children_array[j - 1]].get_weight(i_t, r - 0) +
-                                      self.vtx_S[children_array[j]].get_weight(i_t, 1),
-                                      self.vtx_Y[children_array[j - 1]].get_weight(i_t, r - 1) +
-                                      self.vtx_S[children_array[j]].get_weight(i_t, 0)),
-                            key=lambda w: w[1])
-                        if max_weight < max_weight_maybe:
+                        # the jth child is in children_array[j - 1]
+                        weight_with_S1 = Y_data.get((j - 1, r - 1, i_t), 0) + self.vtx_S[children_array[j - 1]][1 - 0].get(i - i_t, 0)  # l-l', 1-l': (r-1, 1)
+                        weight_with_S0 = Y_data.get((j - 1, r - 0, i_t), 0) + self.vtx_S[children_array[j - 1]][1 - 1].get(i - i_t, 0)  # l-l', 1-l': (r-0, 0)
+
+                        if (max_weight < weight_with_S1) and (weight_with_S0 < weight_with_S1):
+                            max_weight = weight_with_S1
                             i_star = i_t
-                            r_star = r_maybe  # 0 or 1
-                            max_weight = max_weight_maybe
-                    self.vtx_tilde_Y[vtx]
-                    self.vtx_Y[children_array[j]].set_weight(i_star, r_star, max_weight)  # TODO - should be deepcopy
+                            r_star = 1
+                        elif (max_weight < weight_with_S0) and (weight_with_S1 <= weight_with_S0):
+                            max_weight = weight_with_S0
+                            i_star = i_t
+                            r_star = 0
+                    Y_data[(j, r, i)] = Y_data.get((j - 1, r - r_star, i_star), 0) + \
+                                        self.vtx_S[children_array[j - 1]][r_star].get(i - i_star, 0)
+                print("end i")
+
+            # TODO: memory optimization: remove j-1
+
+        # interested in: [Y_data[(self.deg_out[vtx], r, i)] for r,i]
+        return Y_data  # by reference
 
     def apply_on_vtx(self, vtx):
+        Y_data = {}
+        Y_tilde_data = {}
         if self.deg_out[vtx] == 0:
-            for i in range(self.cache_size):
-                self.vtx_Y[vtx] = SplicingFeasible()
-                self.vtx_Y[vtx].insert(i, 0)  # no descendants hence r = 0
+            for i in range(1, self.cache_size + 1):
+                Y_data[(vtx, 0, i)] = self.node_weight[vtx]  # S0, S1 for leaf
+
         else:  # vtx != leaf
-            self.OptDTUnion(self.succesors[vtx], vtx)  # vtx_subtree_Y = Y_tilde # TODO
-            for r in range(0, self.deg_out(vtx)):
+            Y_tilde_data = self.OptDTUnion(self.successors[vtx], vtx)  # (j, r, i)
+            for r in range(0, self.deg_out[vtx]):
                 for i in range(0, self.cache_size + 1):
                     j_maybe = i + r + 1  # potential cache size to splice -> Y(x,r,j) is defined empty if not feasible
-                    if self.vtx_Y[vtx].get_weight(j_maybe, r) < self.vtx_Y[vtx].get_weight(i, r) + self.vtx_weight[
-                        vtx]:
-                        self.vtx_Y[vtx].set_weight(self.vtx_Y[vtx].get_weight(i, r) + self.vtx_weight[vtx])
-        # initialize S(x,0,j), S(x,1,j)
-        for j in range(0, self.cache_size + 1):
-            r0_star, r1_star = -1, -1
-            r0_star_weight, r1_star_weight = -1, -1
-            S0 = SplicingFeasible()
-            S1 = SplicingFeasible()
-            for r in range(0, self.deg_out(vtx)):
-                if self.vtx_Y[vtx].get_weight(j, r) > r0_star_weight:
-                    r0_star = r
-                    r0_star_weight = self.vtx_Y[vtx].get_weight(j, r)
-                    S0.insert(r0_star, j, r1_star_weight)
-                if self.vtx_Y[vtx].get_weight(j, r) > r1_star_weight:
-                    r1_star = r
-                    r1_star_weight = self.vtx_Y[vtx].get_weight(j, r)
-                    S1.insert(r1_star, j, r1_star_weight)
+                    if j_maybe <= self.cache_size:
+                        if Y_data.get((vtx, r, j_maybe), 0) < Y_tilde_data.get((self.deg_out[vtx], r, i), 0) + \
+                                self.node_weight[vtx]:
+                            Y_data[(vtx, r, j_maybe)] = Y_tilde_data.get((self.deg_out[vtx], r, i), 0) + \
+                                                        self.node_weight[vtx]
 
-            self.vtx_S[vtx] = [S0, S1]
+        # initialize S(x,0,j), S(x,1,j)
+        # initializing with 0, weight of empty set
+        S0_weight = {0: 0}
+        S1_weight = {0: 0}
+        # (vtx, r, i) - (jth child, excluded nodes, cache size)
+        for j in range(0, self.cache_size + 1):
+            for r in range(0, self.deg_out[vtx] + 1):
+                for r_tag in range(self.deg_out[vtx] + 1):
+                    if Y_data.get((vtx, r_tag, j), 0) > S0_weight.get(j, 0):
+                        S0_weight[j] = Y_data[(vtx, r_tag, j)]
+
+                    if Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0) > S1_weight.get(j, 0):
+                        S1_weight[j] = Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0)
+
+        self.vtx_S[vtx] = [S0_weight, S1_weight]  # {0: 0, 1: 25, 2: 25, 3: 40, 4: 45} wrong output
+
+    def get_optimal_cache(self):
+        for depth in sorted(list(self.depth_dict.keys()), reverse=True)[:-1]:
+            for vtx in self.depth_dict[depth]:
+                self.apply_on_vtx(vtx)

@@ -204,10 +204,26 @@ class RunCheck:
         cache_size = 4
         algorithm = OptimalLPMCache(policy, policy_weight, cache_size)
         algorithm.get_optimal_cache()
+
+        color_map = []
+        for vtx in algorithm.policy_tree.nodes:
+            if vtx in algorithm.S[ROOT][0][cache_size]:
+                color_map.append('red')
+                continue
+            if vtx in algorithm.gtc_nodes:
+                color_map.append('black')
+                continue
+            else:
+                color_map.append('green')
+
+
         labels = {v: "R_{0}, {1}".format(idx, policy_weight[algorithm.vertex_to_rule[v]])
                   for idx, v in enumerate(algorithm.policy_tree.nodes)}
+
+
+
         # nx.draw(algorithm.policy_tree, labels=labels)
-        Utils.draw_tree(algorithm.policy_tree, labels)
+        Utils.draw_tree(algorithm.policy_tree, labels, color_map=color_map)
         plt.show()
 
 

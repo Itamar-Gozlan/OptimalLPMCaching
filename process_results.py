@@ -171,27 +171,41 @@ class RunCheck:
         policy_weight = {"0.0.0.0/0": 0,
                          # "10.0.0.0/18": 12,  # R1
                          # "10.0.0.0/20": 17,  # R2
-                         "10.0.64.0/18": 25,  # R3
+                         # "10.0.64.0/18": 25,  # R3
+                         # "10.0.0.0/8": 25,  # R3
+                         "10.0.0.0/8": 25,  # R3
                          # "10.0.64.0/20": 3,  # R4
                          "10.0.64.0/22": 5,  # R5
                          # "10.0.80.0/22": 10,  # R6
-                         "10.0.80.0/24": 15  # R7
+                         "10.0.80.0/24": 15,  # R7
+                         "10.0.56.0/22" : 15 # R8
                          }
 
         prefix_to_rule_name = {"0.0.0.0/0": "R0",
-                               # "10.0.0.0/18": "R1",
-                               # "10.0.0.0/20": "R2",
-                               "10.0.64.0/18": "R3",
-                               # "10.0.64.0/20": "R4",
+                               "10.0.0.0/18": "R1",
+                               "10.0.0.0/20": "R2",
+                               "10.0.0.0/8": "R3",
+                               "10.0.64.0/20": "R4",
                                "10.0.64.0/22": "R5",
-                               # "10.0.80.0/22": "R6",
-                               "10.0.80.0/24": "R7"}
+                               "10.0.80.0/22": "R6",
+                               "10.0.80.0/24": "R7",
+                               "10.0.56.0/22" : "R8"
+                               }
+
+        policy_weight = {"0.0.0.0/0": 0,
+                         "10.0.0.0/8": 1000,  # R1
+                         "10.0.0.0/16": 10,  # R1
+                         "10.0.1.0/24": 5,  # R1
+                         "10.0.2.0/24": 20,  # R1
+                         "10.0.3.0/24": 15,  # R1
+                         }
+
         policy = list(policy_weight.keys())
         cache_size = 4
         algorithm = OptimalLPMCache(policy, policy_weight, cache_size)
         algorithm.get_optimal_cache()
-        labels = {v: "{0}, {1}".format(prefix_to_rule_name[algorithm.vertex_to_rule[v]], policy_weight[algorithm.vertex_to_rule[v]])
-                  for v in algorithm.policy_tree.nodes}
+        labels = {v: "R_{0}, {1}".format(idx, policy_weight[algorithm.vertex_to_rule[v]])
+                  for idx, v in enumerate(algorithm.policy_tree.nodes)}
         # nx.draw(algorithm.policy_tree, labels=labels)
         Utils.draw_tree(algorithm.policy_tree, labels)
         plt.show()

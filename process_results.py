@@ -174,21 +174,42 @@ class RunCheck:
 
         X = FeasibleSet.OptDTUnion(feasible_set_array, cache_size)
 
-    @staticmethod
-    def test_random_OptLPM():
-        # policy = RunCheck.get_random_policy_and_weight(5, 2)
-        # zipf_w = np.random.zipf(1.67, len(policy) - 1)
-        # prefix_weight = {p: zipf_w[idx] for idx, p in enumerate(policy[1:])}
-        # print("policy = {0}".format(policy))
-        # print("prefix_weight = {0}".format(prefix_weight))
+    def fixed_buggy_random_policy(self):
         policy = ['0.0.0.0/0', '112.0.0.0/6', '156.0.0.0/6', '159.96.0.0/12', '158.128.0.0/12', '112.112.0.0/12',
                   '112.124.0.0/18', '158.129.64.0/18', '158.133.0.0/18', '159.103.128.0/18', '159.103.0.0/18']
         prefix_weight = {'112.0.0.0/6': 1, '156.0.0.0/6': 2, '159.96.0.0/12': 7, '158.128.0.0/12': 1,
                          '112.112.0.0/12': 1, '112.124.0.0/18': 9083, '158.129.64.0/18': 1, '158.133.0.0/18': 1,
                          '159.103.128.0/18': 3, '159.103.0.0/18': 1}
 
+        policy = ['0.0.0.0/0', '224.0.0.0/6', '188.0.0.0/6', '188.208.0.0/12', '190.48.0.0/12', '226.160.0.0/12',
+                  '227.16.0.0/12', '224.192.0.0/12', '224.196.64.0/18', '227.24.128.0/18', '227.29.192.0/18',
+                  '226.168.128.0/18', '190.51.128.0/18', '188.220.128.0/18']
+        prefix_weight = {'224.0.0.0/6': 22, '188.0.0.0/6': 2, '188.208.0.0/12': 2, '190.48.0.0/12': 1,
+                         '226.160.0.0/12': 5, '227.16.0.0/12': 1, '224.192.0.0/12': 1, '224.196.64.0/18': 1,
+                         '227.24.128.0/18': 4, '227.29.192.0/18': 1, '226.168.128.0/18': 8, '190.51.128.0/18': 1,
+                         '188.220.128.0/18': 1}
+
+        policy = ['0.0.0.0/0', '228.0.0.0/6', '200.0.0.0/6', '192.0.0.0/6', '193.48.0.0/12', '195.32.0.0/12',
+                  '203.240.0.0/12', '202.224.0.0/12', '228.240.0.0/12', '228.253.0.0/18', '228.249.64.0/18',
+                  '228.241.64.0/18', '202.234.192.0/18', '202.224.0.0/18', '203.246.128.0/18', '203.247.0.0/18',
+                  '203.242.128.0/18', '195.40.128.0/18', '193.57.128.0/18']
+        prefix_weight = {'228.0.0.0/6': 1, '200.0.0.0/6': 15, '192.0.0.0/6': 1, '193.48.0.0/12': 3, '195.32.0.0/12': 1,
+                         '203.240.0.0/12': 14, '202.224.0.0/12': 1, '228.240.0.0/12': 1, '228.253.0.0/18': 7,
+                         '228.249.64.0/18': 1, '228.241.64.0/18': 1, '202.234.192.0/18': 4, '202.224.0.0/18': 1,
+                         '203.246.128.0/18': 1, '203.247.0.0/18': 12, '203.242.128.0/18': 1, '195.40.128.0/18': 2,
+                         '193.57.128.0/18': 1}
+
+    @staticmethod
+    def test_random_OptLPM():
+        policy = RunCheck.get_random_policy_and_weight(6, 3)
+        zipf_w = np.random.zipf(1.67, len(policy) - 1)
+        prefix_weight = {p: zipf_w[idx] for idx, p in enumerate(policy[1:])}
+        print("policy = {0}".format(policy))
+        print("prefix_weight = {0}".format(prefix_weight))
+
+
         prefix_weight[ROOT_PREFIX] = 0
-        cache_size = 4
+        cache_size = 5
         algorithm = OptimalLPMCache(policy, prefix_weight, cache_size)
         algorithm.get_optimal_cache()
 
@@ -196,13 +217,13 @@ class RunCheck:
         for vtx in algorithm.policy_tree.nodes:
             # color_map.append('green')
             if vtx in algorithm.S[ROOT][1][cache_size]:
-                color_map.append('red')
+                color_map.append('pink')
                 continue
             if vtx in algorithm.gtc_nodes:
                 color_map.append('gray')
                 continue
             else:
-                color_map.append('green')
+                color_map.append('lime')
 
         labels = {v: str(v) + "\n" + str(prefix_weight[algorithm.vertex_to_rule[v]])
                   for idx, v in enumerate(algorithm.policy_tree.nodes)}

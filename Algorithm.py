@@ -369,37 +369,55 @@ class OptimalLPMCache:
             S(j, 1, i-it) union Y_data(j-1,r-1, it) is defined if:
             1. j == 1 and S(j, 1, i-it) > 0
             2. Y_data(j-1,r, it) > 0 because root has to come from j-1
+            
+            if we don't take all cache from S1 (i_t > 0) we have to make sure Y(j-1,r-1,i_t) is feasible
             """
             S0j_imi_t = self.vtx_S[children_array[j - 1]][0].get(i - i_t, 0) # S0
             S1j_imi_t = self.vtx_S[children_array[j - 1]][1].get(i - i_t, 0) # S1
+            if r - 1 >= 0 and ((j == 1) or Y_data.get((j - 1, r - 1, i_t), 0) > 0): # Y(j-1, r-1, i_t) union S1j_imi_t
+                weight_with_S1 = Y_data.get((j - 1, r - 1, i_t), 0) + S1j_imi_t
 
-            if r == 0:  # can only consider S0
-                if (j == 1 and S0j_imi_t > 0) or (S0j_imi_t > 0 and Y_data.get((j - 1, r, i_t), 0) > 0):
-                    weight_with_S0 = Y_data.get((j - 1, r, i_t), 0) + S0j_imi_t
-                # case_log.append((0, weight_with_S0))
-            elif r == j:  # can only consider S1
-                if (j == 1 and S1j_imi_t > 0) or (Y_data.get((j - 1, r - 1, i_t), 0) > 0) or (i_t == 0 and S1j_imi_t > 0):
-                    weight_with_S1 = Y_data.get((j - 1, r - 1, i_t), 0) + S1j_imi_t
-                # case_log.append((1, weight_with_S1))
-
-            else:
-                # (i,r) - feasible set with j-1
-                if (j == 1 and S0j_imi_t > 0) or (S0j_imi_t > 0 and Y_data.get((j - 1, r, i_t), 0) > 0):
-                    weight_with_S0 = Y_data.get((j - 1, r, i_t), 0) + S0j_imi_t
-
-                # case_log.append((2, weight_with_S0))
-                # (i,r) - feasible set without j-1
-                if (j == 1 and S1j_imi_t > 0) or (Y_data.get((j - 1, r - 1, i_t), 0) > 0):
-                    weight_with_S1 = Y_data.get((j - 1, r - 1, i_t), 0) + S1j_imi_t
-
-                # case_log.append((3, weight_with_S1))
+            """
+            Y(j,r,i) = Y(j-1, r, i_t) U S0j(i-it) is feasible if:
+            1. r < j. If r == j can't take root
+            2. j == 1 and Y(j-1, r, i_t) = empty_set 
+            """
+            if r < j and ((j == 1) or Y_data.get((j - 1, r, i_t), 0) or r == 0):
+                weight_with_S0 = Y_data.get((j - 1, r, i_t), 0) + S0j_imi_t
+            if weight_with_S1 > max_weight and weight_with_S1 > weight_with_S0:
+                max_weight = weight_with_S1
+                (i_star, r_star, j_star) = (i_t, 0, j)
             if weight_with_S0 > max_weight and weight_with_S0 >= weight_with_S1:
                 max_weight = weight_with_S0
                 (i_star, r_star, j_star) = (i_t, 1, j)
 
-            if weight_with_S1 > max_weight and weight_with_S1 > weight_with_S0:
-                max_weight = weight_with_S1
-                (i_star, r_star, j_star) = (i_t, 0, j)
+            # if r == 0:  # can only consider S0
+            #     if (j == 1 and S0j_imi_t > 0) or (S0j_imi_t > 0 and Y_data.get((j - 1, r, i_t), 0) > 0):
+            #         weight_with_S0 = Y_data.get((j - 1, r, i_t), 0) + S0j_imi_t
+            #     # case_log.append((0, weight_with_S0))
+            # elif r == j:  # can only consider S1
+            #     if (j == 1 and S1j_imi_t > 0) or (Y_data.get((j - 1, r - 1, i_t), 0) > 0) or (i_t == 0 and S1j_imi_t > 0):
+            #         weight_with_S1 = Y_data.get((j - 1, r - 1, i_t), 0) + S1j_imi_t
+            #     # case_log.append((1, weight_with_S1))
+            #
+            # else:
+            #     # (i,r) - feasible set with j-1
+            #     if (j == 1 and S0j_imi_t > 0) or (S0j_imi_t > 0 and Y_data.get((j - 1, r, i_t), 0) > 0):
+            #         weight_with_S0 = Y_data.get((j - 1, r, i_t), 0) + S0j_imi_t
+            #
+            #     # case_log.append((2, weight_with_S0))
+            #     # (i,r) - feasible set without j-1
+            #     if (j == 1 and S1j_imi_t > 0) or (Y_data.get((j - 1, r - 1, i_t), 0) > 0):
+            #         weight_with_S1 = Y_data.get((j - 1, r - 1, i_t), 0) + S1j_imi_t
+            #
+            #     # case_log.append((3, weight_with_S1))
+            # if weight_with_S0 > max_weight and weight_with_S0 >= weight_with_S1:
+            #     max_weight = weight_with_S0
+            #     (i_star, r_star, j_star) = (i_t, 1, j)
+            #
+            # if weight_with_S1 > max_weight and weight_with_S1 > weight_with_S0:
+            #     max_weight = weight_with_S1
+            #     (i_star, r_star, j_star) = (i_t, 0, j)
         return max_weight, (i_star, r_star, j_star)
 
     def OptDTUnion_update_max_weight_solution(self, j, r, i, star, Y_solution, children_array, max_weight, Y_data):
@@ -431,8 +449,8 @@ class OptimalLPMCache:
         for j in range(1, self.deg_out[vtx] + 1):  # j=1,..,m -> extend solution to include Ty
             for r in range(0, j + 1):  # number of roots to exclude
                 for i in range(0, self.cache_size + 1):  # possible cache size
-                    if vtx == 24 and (j,r,i) == (2,1,3):
-                        print("check i_star, r_star")
+                    if vtx == 24 and (j,r,i) == (2,1,1):
+                         print("Y(2,1,1) need to be 0")
                     max_weight, (i_star, r_star, j_star) = self.OptDTUnion_it(Y_data, j, r, i, children_array)
                     if max_weight > 0:
                         Y_data[(j, r, i)] = max_weight

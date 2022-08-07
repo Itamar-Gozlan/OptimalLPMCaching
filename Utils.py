@@ -170,8 +170,7 @@ def compress_prefix_tree(T, final_nodes):
     return
 
 
-def generate_random_LPM():
-    global n_bits
+def generate_random_LPM(n_bits):
     random_ip = np.random.randint(0, 2 ** n_bits)
     n_mask_bits = np.random.randint(0, n_bits)
     # random_ip = random_ip & ~((1 << n_mask_bits) - 1)

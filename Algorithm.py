@@ -359,56 +359,70 @@ class OptimalLPMCache:
         max_weight = -1
         weight_with_S0 = 0
         weight_with_S1 = 0
-        (i_star, r_star) = (-1, -1)
+        (i_star, r_star, j_star) = (-1, -1, -1)
         for i_t in range(i + 1):
+            """
+            Should be applied only to potential (i,r)-feasible sets
+            S(j, 0, i-it) union Y_data(j-1,r, it) is defined if:
+            1. j == 1 and S(j, 0, i-it) > 0
+            2. S(j, 0, i-it) > 0 and Y_data(j-1,r, it) > 0
+            S(j, 1, i-it) union Y_data(j-1,r-1, it) is defined if:
+            1. j == 1 and S(j, 1, i-it) > 0
+            2. Y_data(j-1,r, it) > 0 because root has to come from j-1
+            """
+            S0j_imi_t = self.vtx_S[children_array[j - 1]][0].get(i - i_t, 0) # S0
+            S1j_imi_t = self.vtx_S[children_array[j - 1]][1].get(i - i_t, 0) # S1
+
             if r == 0:  # can only consider S0
-                weight_with_S0 = Y_data.get((j - 1, r, i_t), 0) + \
-                                 self.vtx_S[children_array[j - 1]][0].get(i - i_t, 0)
+                if (j == 1 and S0j_imi_t > 0) or (S0j_imi_t > 0 and Y_data.get((j - 1, r, i_t), 0) > 0):
+                    weight_with_S0 = Y_data.get((j - 1, r, i_t), 0) + S0j_imi_t
                 # case_log.append((0, weight_with_S0))
             elif r == j:  # can only consider S1
-                weight_with_S1 = Y_data.get((j - 1, r - 1, i_t), 0) + \
-                                 self.vtx_S[children_array[j - 1]][1].get(i - i_t, 0)
+                if (j == 1 and S1j_imi_t > 0) or (Y_data.get((j - 1, r - 1, i_t), 0) > 0) or (i_t == 0 and S1j_imi_t > 0):
+                    weight_with_S1 = Y_data.get((j - 1, r - 1, i_t), 0) + S1j_imi_t
                 # case_log.append((1, weight_with_S1))
 
             else:
                 # (i,r) - feasible set with j-1
-                weight_with_S0 = Y_data.get((j - 1, r, i_t), 0) + \
-                                 self.vtx_S[children_array[j - 1]][0].get(i - i_t, 0)
+                if (j == 1 and S0j_imi_t > 0) or (S0j_imi_t > 0 and Y_data.get((j - 1, r, i_t), 0) > 0):
+                    weight_with_S0 = Y_data.get((j - 1, r, i_t), 0) + S0j_imi_t
+
                 # case_log.append((2, weight_with_S0))
                 # (i,r) - feasible set without j-1
-                weight_with_S1 = Y_data.get((j - 1, r - 1, i_t), 0) + \
-                                 self.vtx_S[children_array[j - 1]][1].get(i - i_t, 0)
+                if (j == 1 and S1j_imi_t > 0) or (Y_data.get((j - 1, r - 1, i_t), 0) > 0):
+                    weight_with_S1 = Y_data.get((j - 1, r - 1, i_t), 0) + S1j_imi_t
+
                 # case_log.append((3, weight_with_S1))
             if weight_with_S0 > max_weight and weight_with_S0 >= weight_with_S1:
                 max_weight = weight_with_S0
-                (i_star, r_star) = (i_t, 1)
+                (i_star, r_star, j_star) = (i_t, 1, j)
 
             if weight_with_S1 > max_weight and weight_with_S1 > weight_with_S0:
                 max_weight = weight_with_S1
-                (i_star, r_star) = (i_t, 0)
-        return max_weight, (i_star, r_star)
+                (i_star, r_star, j_star) = (i_t, 0, j)
+        return max_weight, (i_star, r_star, j_star)
 
-    def OptDTUnion_update_max_weight_solution(self, j, r, i, star, Y_solution, children_array):
+    def OptDTUnion_update_max_weight_solution(self, j, r, i, star, Y_solution, children_array, max_weight, Y_data):
+        # if 24 in children_array and (j,r,i) == (2, 1, 4):
+        #     print("missing 18")
         get_Sj0i = lambda j_child, idx: self.S.get(children_array[j_child - 1], {}).get(0, {}).get(idx,
                                                                                                    set())
         get_Sj1i = lambda j_child, idx: self.S.get(children_array[j_child - 1], {}).get(1, {}).get(idx,
                                                                                                    set())
-        (i_star, r_star) = star
+        (i_star, r_star, j_star) = star
         if r_star == 1:  # sj0(i-i_star)
-            if r == 0:  # r == 0
-                r_star = 0
-            Y_solution[(j, r, i)] = Y_solution.get((j - 1, r - r_star, i_star), set()).union(
+            Y_solution[(j, r, i)] = Y_solution.get((j - 1, r, i_star), set()).union(
                 get_Sj0i(j, i - i_star))
-            # weight_with_S0_t = Y_data.get((j - 1, r - r_star, i_star), 0) + \
-            #                    self.vtx_S[children_array[j - 1]][0].get(i - i_star, 0)
-            # if weight_with_S0_t != max_weight:
-            #     print('Err')
+            weight_with_S0_t = Y_data.get((j - 1, r, i_star), 0) + \
+                               self.vtx_S[children_array[j - 1]][0].get(i - i_star, 0)
+            if weight_with_S0_t != max_weight:
+                print('Err')
         else:
             Y_solution[(j, r, i)] = Y_solution.get((j - 1, r - 1, i_star), set()).union(get_Sj1i(j, i - i_star))
-            # weight_with_S1_t = Y_data.get((j - 1, r - 1, i_star), 0) + \
-            #                    self.vtx_S[children_array[j - 1]][1].get(i - i_star, 0)
-            # if weight_with_S1_t != max_weight:
-            #     print('Err')
+            weight_with_S1_t = Y_data.get((j - 1, r - 1, i_star), 0) + \
+                               self.vtx_S[children_array[j - 1]][1].get(i - i_star, 0)
+            if weight_with_S1_t != max_weight:
+                print('Err')
 
     def OptDTUnion(self, children_array, vtx):  # return (m,k) collection of SplicingFeasble sets
         # (j,r,i) - Optimal weight of T(<=j) with excluding r vertices
@@ -417,15 +431,15 @@ class OptimalLPMCache:
         for j in range(1, self.deg_out[vtx] + 1):  # j=1,..,m -> extend solution to include Ty
             for r in range(0, j + 1):  # number of roots to exclude
                 for i in range(0, self.cache_size + 1):  # possible cache size
-                    max_weight, (i_star, r_star) = self.OptDTUnion_it(Y_data, j, r, i, children_array)
+                    if vtx == 24 and (j,r,i) == (2,1,3):
+                        print("check i_star, r_star")
+                    max_weight, (i_star, r_star, j_star) = self.OptDTUnion_it(Y_data, j, r, i, children_array)
                     if max_weight > 0:
                         Y_data[(j, r, i)] = max_weight
-                        self.OptDTUnion_update_max_weight_solution(j, r, i, (i_star, r_star), Y_solution,
-                                                                   children_array)
+                        self.OptDTUnion_update_max_weight_solution(j, r, i, (i_star, r_star, j_star), Y_solution,
+                                                                   children_array, max_weight, Y_data)
 
             # TODO: memory optimization: remove j-1
-        # OptimalLPMCache.Y_data_j_to_df(Y_data, 1, self.cache_size)
-        # interested in: [Y_data[(self.deg_out[vtx], r, i)] for r,i]
         return Y_data, Y_solution  # by reference
 
     def apply_on_vtx(self, vtx):
@@ -477,11 +491,11 @@ class OptimalLPMCache:
                 self.apply_on_vtx(vtx)
 
         self.gtc_nodes = self.get_gtc()
-        print("donr")
+        print("done")
 
     def get_gtc(self):
         gtc_nodes = set()
-        for vtx in self.S[ROOT][0][self.cache_size]:
+        for vtx in self.S[ROOT][1][self.cache_size]:
             if self.S_r.get(vtx) and self.S_r[vtx][0] > 0:
                 for gtc in set(self.policy_tree.neighbors(vtx))-self.S[ROOT][0][self.cache_size]:
                     gtc_nodes.add(gtc)

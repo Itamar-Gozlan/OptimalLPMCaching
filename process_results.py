@@ -19,17 +19,26 @@ ROOT_PREFIX = '0.0.0.0/0'
 
 class RunCheck:
     @staticmethod
-    def get_random_policy_and_weight():
-        policy = [Utils.binary_lpm_to_str(s) for s in Utils.compute_random_policy(15)]
-        policy_weight = {k.strip(): np.random.randint(100) for k in policy}
-        print("policy = {0}".format(policy))
-        print("policy_weight = {0}".format(policy_weight))
-
-        if '0.0.0.0/0' not in policy:
-            policy.append("0.0.0.0/0")
-        policy_weight['0.0.0.0/0'] = 0
-
-        return policy, policy_weight
+    def get_random_policy_and_weight(req_depth, avg_degree):
+        curr_depth = 0
+        ROOT = ""
+        depth_dict = {0: [ROOT]}
+        while curr_depth < req_depth - 2:
+            for v_rule in depth_dict[curr_depth]:
+                n_children = np.random.randint(avg_degree) + 1
+                for u in range(n_children):
+                    n_bits = int((32 / req_depth))
+                    random_ip = np.random.randint(0, 2 ** n_bits)
+                    bit_str = "".join(['0'] * (n_bits - len(f'0b{random_ip:04b}'.split('b')[-1]))) + \
+                              f'0b{random_ip:04b}'.split('b')[-1]
+                    depth_dict[curr_depth + 1] = [v_rule + bit_str] + depth_dict.get(curr_depth + 1, [])
+            curr_depth += 1
+        policy = []
+        for depth in depth_dict:
+            for v_rule in depth_dict[depth]:
+                lpm_rule = Utils.binary_lpm_to_str(v_rule)
+                policy.append(lpm_rule)
+        return policy
 
     @staticmethod
     def validate_online_optimal_lpm():
@@ -167,60 +176,36 @@ class RunCheck:
 
     @staticmethod
     def test_random_OptLPM():
-        # policy, policy_weight = RunCheck.get_random_policy_and_weight()
-        policy_weight = {"0.0.0.0/0": 0,
-                         # "10.0.0.0/18": 12,  # R1
-                         # "10.0.0.0/20": 17,  # R2
-                         # "10.0.64.0/18": 25,  # R3
-                         # "10.0.0.0/8": 25,  # R3
-                         "10.0.0.0/8": 25,  # R3
-                         # "10.0.64.0/20": 3,  # R4
-                         "10.0.64.0/22": 5,  # R5
-                         # "10.0.80.0/22": 10,  # R6
-                         "10.0.80.0/24": 15,  # R7
-                         "10.0.56.0/22" : 15 # R8
-                         }
+        # policy = RunCheck.get_random_policy_and_weight(5, 2)
+        # zipf_w = np.random.zipf(1.67, len(policy) - 1)
+        # prefix_weight = {p: zipf_w[idx] for idx, p in enumerate(policy[1:])}
+        # print("policy = {0}".format(policy))
+        # print("prefix_weight = {0}".format(prefix_weight))
+        policy = ['0.0.0.0/0', '112.0.0.0/6', '156.0.0.0/6', '159.96.0.0/12', '158.128.0.0/12', '112.112.0.0/12',
+                  '112.124.0.0/18', '158.129.64.0/18', '158.133.0.0/18', '159.103.128.0/18', '159.103.0.0/18']
+        prefix_weight = {'112.0.0.0/6': 1, '156.0.0.0/6': 2, '159.96.0.0/12': 7, '158.128.0.0/12': 1,
+                         '112.112.0.0/12': 1, '112.124.0.0/18': 9083, '158.129.64.0/18': 1, '158.133.0.0/18': 1,
+                         '159.103.128.0/18': 3, '159.103.0.0/18': 1}
 
-        prefix_to_rule_name = {"0.0.0.0/0": "R0",
-                               "10.0.0.0/18": "R1",
-                               "10.0.0.0/20": "R2",
-                               "10.0.0.0/8": "R3",
-                               "10.0.64.0/20": "R4",
-                               "10.0.64.0/22": "R5",
-                               "10.0.80.0/22": "R6",
-                               "10.0.80.0/24": "R7",
-                               "10.0.56.0/22" : "R8"
-                               }
-
-        policy_weight = {"0.0.0.0/0": 0,
-                         "10.0.0.0/8": 1000,  # R1
-                         "10.0.0.0/16": 10,  # R1
-                         "10.0.1.0/24": 5,  # R1
-                         "10.0.2.0/24": 20,  # R1
-                         "10.0.3.0/24": 15,  # R1
-                         }
-
-        policy = list(policy_weight.keys())
+        prefix_weight[ROOT_PREFIX] = 0
         cache_size = 4
-        algorithm = OptimalLPMCache(policy, policy_weight, cache_size)
+        algorithm = OptimalLPMCache(policy, prefix_weight, cache_size)
         algorithm.get_optimal_cache()
 
         color_map = []
         for vtx in algorithm.policy_tree.nodes:
-            if vtx in algorithm.S[ROOT][0][cache_size]:
+            # color_map.append('green')
+            if vtx in algorithm.S[ROOT][1][cache_size]:
                 color_map.append('red')
                 continue
             if vtx in algorithm.gtc_nodes:
-                color_map.append('black')
+                color_map.append('gray')
                 continue
             else:
                 color_map.append('green')
 
-
-        labels = {v: "R_{0}, {1}".format(idx, policy_weight[algorithm.vertex_to_rule[v]])
+        labels = {v: str(v) + "\n" + str(prefix_weight[algorithm.vertex_to_rule[v]])
                   for idx, v in enumerate(algorithm.policy_tree.nodes)}
-
-
 
         # nx.draw(algorithm.policy_tree, labels=labels)
         Utils.draw_tree(algorithm.policy_tree, labels, color_map=color_map)

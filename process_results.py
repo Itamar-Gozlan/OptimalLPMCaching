@@ -200,18 +200,96 @@ class RunCheck:
                          '193.57.128.0/18': 1}
 
     @staticmethod
+    def running_example():
+
+        binary_policy = [
+            '',
+            '00001010',
+            '0000101000000001',
+            '01000000',
+            '0100000000001010',
+            '010000000000101000001000',
+            '010000000000101000000010',
+            '01000000000010100000001000001010'
+        ]
+
+        policy = {
+            '0.0.0.0/0': 0,
+            '10.0.0.0/8': 12,
+            '10.1.0.0/16': 17,
+            '64.0.0.0/8': 25,
+            '64.10.0.0/16': 3,
+            '64.10.8.0/24': 5,
+            '64.10.2.0/24': 10,
+            '64.10.2.10/32': 15
+        }
+
+        # policy = {}
+        # for b_p in binary_policy:
+        #     policy[b_p] = Utils.binary_lpm_to_str(b_p)
+        #
+        # r_po = {v: k for k, v in policy.items()}
+        #
+        # print(policy.values())
+
+        cache_size = 4
+        algorithm = OptimalLPMCache(policy.keys(),policy, cache_size)
+        algorithm.get_optimal_cache()
+        algorithm.to_json('running_example')
+
+        color_map = []
+        for vtx in algorithm.policy_tree.nodes:
+            # color_map.append('lime')
+            if vtx in algorithm.S[ROOT][1][4]:
+                color_map.append('pink')
+                continue
+            if vtx in algorithm.gtc_nodes:
+                color_map.append('gray')
+                continue
+            else:
+                color_map.append('lime')
+
+        # labels = {v: str(v) + "\n" + str(prefix_weight[algorithm.vertex_to_rule[v]] + "\n" + algorithm.vertex_to_rule[v])
+        #           for idx, v in enumerate(algorithm.policy_tree.nodes)}
+
+        # labels = {v: "{0} \n {1}".format(policy[key], policy[])
+        # for idx, v in enumerate(algorithm.policy_tree.nodes)}
+
+        labels = {v: "{0} \n {1}".format(algorithm.vertex_to_rule[v], policy[algorithm.vertex_to_rule[v]]) for v in
+                  algorithm.policy_tree.nodes}
+
+        # nx.draw(algorithm.policy_tree, labels=labels)
+        Utils.draw_tree(algorithm.policy_tree, labels, color_map=color_map)
+        plt.show()
+
+    @staticmethod
     def test_random_OptLPM():
-        policy = RunCheck.get_random_policy_and_weight(6, 3)
+        avg_degree = 2
+        depth = 6
+        cache_size = 4
+
+        # avg_degree = 3
+        # depth = 8
+        # cache_size = 5
+        policy = RunCheck.get_random_policy_and_weight(depth, avg_degree)
         zipf_w = np.random.zipf(1.67, len(policy) - 1)
         prefix_weight = {p: zipf_w[idx] for idx, p in enumerate(policy[1:])}
         print("policy = {0}".format(policy))
         print("prefix_weight = {0}".format(prefix_weight))
 
-
         prefix_weight[ROOT_PREFIX] = 0
-        cache_size = 5
         algorithm = OptimalLPMCache(policy, prefix_weight, cache_size)
+        print("Policy size: {0} avg_degree :{1} depth: {2}".format(len(policy), avg_degree, depth))
+        t0 = time.time()
         algorithm.get_optimal_cache()
+        elapsed_time = time.time() - t0
+        print("algorithm.vtx_S[ROOT][1][cache_size] : {0}".format(algorithm.vtx_S[ROOT][1][cache_size]))
+        print(
+            "cached rules: {0} gtc nodes: {1}".format(len(algorithm.S[ROOT][1][cache_size]), len(algorithm.gtc_nodes)))
+        print("Cache size: {0} Total cache entries used: {1}".format(cache_size,
+                                                                     len(algorithm.S[ROOT][1][cache_size]) + len(
+                                                                         algorithm.gtc_nodes)))
+        print("elapsed_time: {0} sec".format(elapsed_time))
 
         color_map = []
         for vtx in algorithm.policy_tree.nodes:
@@ -947,7 +1025,8 @@ def create_heatmap():
 
 
 def main():
-    RunCheck.test_random_OptLPM()
+    # RunCheck.test_random_OptLPM()
+    RunCheck.running_example()
 
 
 if __name__ == "__main__":

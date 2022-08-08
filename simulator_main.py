@@ -125,45 +125,29 @@ def online_simulator():
 def offline_simulator():
     global base
     prefix_weight_json_path = sys.argv[1]
-    packet_trace_json_path = sys.argv[2]
-    cache_size = int(sys.argv[3])
-    dependency_splice = eval(sys.argv[4])
+    dir_path = sys.argv[2]
 
     print("prefix_weight_json_path : {0}".format(prefix_weight_json_path))
-    print("packet_trace_json_path : {0}".format(packet_trace_json_path))
-
-
 
     with open(prefix_weight_json_path, 'r') as f:
         prefix_weight = json.load(f)
-    threshold = 15
+    if 'zipf' in prefix_weight_json_path:
+        threshold = 15
+    else:
+        threshold = 1
     shorter_prefix_weight = {k: np.int64(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
-    # print(len(shorter_prefix_weight))
+    cache_size = 1024
+    print(len(shorter_prefix_weight))
     t0 = time.time()
-    opt_cache_algorithm = HeuristicLPMCache(cache_size=cache_size,
-                                            policy=list(prefix_weight.keys()),
-                                            dependency_splice=dependency_splice)
+    opt_cache_algorithm = OptimalLPMCache(policy=list(prefix_weight.keys()),
+                                          prefix_weight=prefix_weight,
+                                          cache_size=cache_size)
+
     print(time.time() - t0)
     t0 = time.time()
-    optimal_offline_cache = opt_cache_algorithm.get_cache(shorter_prefix_weight)
+    opt_cache_algorithm.get_cache(shorter_prefix_weight)
     print(time.time() - t0)
-
-    # optimal_offline_cache = set((map(lambda v: v[0], sorted(list(prefix_weight.items()),
-    #                                                         key=lambda v: v[1], reverse=True)[:512])))
-
-    with open(packet_trace_json_path, 'r') as f:
-        packet_trace = json.load(f)
-
-    hit = 0
-    t0 = time.time()
-    for idx, packet in enumerate(packet_trace):
-        if packet in optimal_offline_cache:
-            hit += 1
-        if idx % 100000 == 0:
-            print("idx: {0} hit-count :{1}".format(idx, hit))
-    print(time.time() - t0)
-
-    print("Hit rate: {0}".format(hit * 100 / len(packet_trace)))
+    opt_cache_algorithm.to_json(dir_path)
 
 
 def run_OTC():
@@ -203,4 +187,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -1,5 +1,7 @@
 import abc
 import ipaddress
+import os
+import json
 from Utils import construct_tree
 import networkx as nx
 import itertools
@@ -348,9 +350,6 @@ class OptimalLPMCache:
         self.node_weight = {v: prefix_weight[self.vertex_to_rule[v]] for v in self.policy_tree.nodes}
         self.cache_size = cache_size
         self.vtx_S = {}
-        self.vtx_Y = {}
-        self.vtx_tilde_Y = {}
-        self.S_r = {}
         self.S = {}
         self.gtc_nodes = None
 
@@ -427,15 +426,21 @@ class OptimalLPMCache:
         for j in range(1, self.deg_out[vtx] + 1):  # j=1,..,m -> extend solution to include Ty
             for r in range(0, j + 1):  # number of roots to exclude
                 for i in range(0, self.cache_size + 1):  # possible cache size
-                    if vtx == 30 and (j, r, i) == (2, 1, 1):
-                        print("Y(2,1,1) need to be 1")
                     max_weight, (i_star, r_star, j_star) = self.OptDTUnion_it(Y_data, j, r, i, children_array)
                     if max_weight >= 0:
                         Y_data[(j, r, i)] = max_weight
                         self.OptDTUnion_update_max_weight_solution(j, r, i, (i_star, r_star, j_star), Y_solution,
                                                                    children_array, max_weight, Y_data)
+            if j - 2 > 0: # TODO: memory optimization: remove j-1
+                for r in range(0, j - 2):  # number of roots to exclude
+                    for i in range(0, self.cache_size + 1):  # possible cache size
+                        if (j-2, r, i) in Y_data:
+                            del Y_data[(j-2, r, i)]
 
-            # TODO: memory optimization: remove j-1
+                        if (j-2, r, i) in Y_solution:
+                            del Y_solution[(j-2, r, i)]
+
+
         return Y_data, Y_solution  # by reference
 
     def apply_on_vtx(self, vtx):
@@ -459,10 +464,6 @@ class OptimalLPMCache:
                         if Y_tilde_data.get((self.deg_out[vtx], r, i)) is not None:
                             weight_maybe = Y_tilde_data.get((self.deg_out[vtx], r, i), 0) + self.node_weight[vtx]
                             if Y_data.get((vtx, r, j_maybe), 0) < weight_maybe:
-
-                                if vtx == 6 and j_maybe == 4:
-                                    print("should indicate 3 gtc! -> only for r == 3")
-
                                 Y_data[(vtx, r, j_maybe)] = weight_maybe
                                 Y_solution[(vtx, r, j_maybe)] = Y_tilde_solution.get((self.deg_out[vtx], r, i),
                                                                                      set()).union(set([vtx]))
@@ -472,7 +473,6 @@ class OptimalLPMCache:
         S0_weight = {0: None}
         S1_weight = {}
         self.S[vtx] = {0: {}, 1: {}}
-        self.S_r[vtx] = {}
         # (vtx, r, i) - (jth child, excluded nodes, cache size)
         for j in range(0, self.cache_size + 1):
             for r in range(0, self.deg_out[vtx] + 1):
@@ -480,7 +480,6 @@ class OptimalLPMCache:
                     if Y_data.get((vtx, r_tag, j), None) is not None and Y_data[(vtx, r_tag, j)] > S0_weight.get(j, 0):
                         S0_weight[j] = Y_data[(vtx, r_tag, j)]
                         self.S[vtx][0][j] = Y_solution.get((vtx, r_tag, j), set())
-                        self.S_r[vtx][j] = r_tag  # r_tag only for S0 that include vtx
 
                     if Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0) > S1_weight.get(j, -1):
                         S1_weight[j] = Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0)
@@ -496,11 +495,11 @@ class OptimalLPMCache:
 
     def get_optimal_cache(self):
         for depth in sorted(list(self.depth_dict.keys()), reverse=True)[:-1]:
+            print("depth: {0}, nodes in depth: {1}".format(depth, len(self.depth_dict[depth])))
             for vtx in self.depth_dict[depth]:
                 self.apply_on_vtx(vtx)
 
         self.gtc_nodes = self.get_gtc()
-        print("done")
 
     def get_gtc(self):
         gtc_nodes = set()
@@ -509,6 +508,26 @@ class OptimalLPMCache:
                 gtc_nodes.add(gtc)
         return gtc_nodes
 
+    def to_json(self, dir_path):
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+        with open(dir_path + '/vtx_S.json', 'w') as f:
+            json.dump(self.vtx_S[0][1], f)
+        with open(dir_path + '/vertex_to_rule.json', 'w') as f:
+            json.dump(self.vertex_to_rule, f)
+        with open(dir_path + '/S.json', 'w') as f:
+            jsonable_cache_set = {k: list(v) for k,v in self.S[ROOT][1].items()}
+            json.dump(jsonable_cache_set, f)
+        total_weight = sum(self.node_weight.values())
+        df = pd.DataFrame(columns=["Cache Size", "Hit Rate"])
+        for i in range(self.cache_size + 1):
+            row = {"Cache Size" : i,
+                   "Hit Rate": 100*self.vtx_S[ROOT][1][i]/total_weight}
+            df = df.append(row, ignore_index=True)
+        df.to_csv(dir_path + '/result.csv')
+
+
+
     @staticmethod
     def Y_data_j_to_df(Y_data, j, cache_size):
         np_data_2d = np.zeros((cache_size + 1, j + 1))
@@ -516,7 +535,6 @@ class OptimalLPMCache:
             for i in range(cache_size + 1):
                 np_data_2d[i, r] = Y_data.get((j, r, i), -1)
 
-        print("done")
         return np_data_2d
 
     @staticmethod

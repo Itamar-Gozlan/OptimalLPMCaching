@@ -63,8 +63,7 @@ class RDXRuleNode:
 # ---------------- Preliminaries -----------------
 
 def binary_lpm_to_str(bin_str):
-    return str(ipaddress.IPv4Address(int(bin_str + "".join((32 - len(
-        bin_str)) * ['0']), 2))) + "/{0}".format(len(bin_str))
+    return str(ipaddress.IPv4Address(int(bin_str + "".join((32 - len(bin_str)) * ['0']), 2))) + "/{0}".format(len(bin_str))
 
 
 def construct_tree(policy):

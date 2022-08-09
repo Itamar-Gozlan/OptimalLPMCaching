@@ -134,8 +134,8 @@ def offline_simulator():
     if 'zipf' in prefix_weight_json_path:
         threshold = 15
     else:
-        threshold = 99000
-    shorter_prefix_weight = {k: np.int64(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
+        threshold = 0
+    shorter_prefix_weight = {k: int(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
     shorter_prefix_weight['0.0.0.0/0'] = 0
     cache_size = 1024
     print(len(shorter_prefix_weight))

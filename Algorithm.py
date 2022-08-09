@@ -343,8 +343,10 @@ class OptimalLPMCache:
     Don't keep 0 results
     """
 
-    def __init__(self, policy, prefix_weight, cache_size, logfile_path):
+    def __init__(self, policy, prefix_weight, cache_size, logfile_path, optimize_for_leafs=True):
         self.policy_tree, self.rule_to_vertex, self.successors = HeuristicLPMCache.process_policy(policy)
+        # optimizing for leafs
+        self.successors = {k: sorted(v, key=lambda vx: len(self.successors[vx])) for k, v in self.successors.items()}
         self.vertex_to_rule = {value: key for key, value in self.rule_to_vertex.items()}
         self.depth_dict = HeuristicLPMCache.construct_depth_dict(self.policy_tree)
         self.deg_out = {v: self.policy_tree.out_degree(v) for v in self.policy_tree.nodes}
@@ -354,7 +356,11 @@ class OptimalLPMCache:
         self.S = {}
         self.gtc_nodes = None
         self.track_solution_set = False
-        self.logfile = open(logfile_path, 'w+')
+        if logfile_path:
+            self.logfile = open(logfile_path, 'w+')
+        else:
+            self.logfile = None
+        self.optimize_for_leafs = optimize_for_leafs
 
     def OptDTUnion_it(self, Y_data, j, r, i, children_array):
         # case_log = []
@@ -423,15 +429,31 @@ class OptimalLPMCache:
         # (j,r,i) - Optimal weight of T(<=j) with excluding r vertices
         Y_data = {}  # (j,r,i)
         Y_solution = {}
-        for j in range(1, self.deg_out[vtx] + 1):  # j=1,..,m -> extend solution to include Ty
-            for r in range(0, j + 1):  # number of roots to exclude
+        n_child_leafs = 0
+        if self.optimize_for_leafs == 0:
+            n_child_leafs = 0
+            while len(children_array) > n_child_leafs and len(self.successors[children_array[n_child_leafs]]) == 0:
+                n_child_leafs += 1
+
+            sorted_leafs_weight = sorted([self.node_weight[v] for v in children_array[:n_child_leafs]], reverse=True)
+            for r in range(0, n_child_leafs + 1):  # number of roots to exclude
                 for i in range(0, self.cache_size + 1):  # possible cache size
-                    max_weight, (i_star, r_star, j_star) = self.OptDTUnion_it(Y_data, j, r, i, children_array)
+                    leafs_to_choose = n_child_leafs - r
+                    if leafs_to_choose <= i:
+                        Y_data[(n_child_leafs, r, i)] = sum(sorted_leafs_weight[:leafs_to_choose])
+
+        print("Non leafs children: {0}".format(self.deg_out[vtx] - n_child_leafs))
+        for j in range(n_child_leafs + 1, self.deg_out[vtx] + 1):  # j=1,..,m -> extend solution to include Ty
+            for r in range(0, j + 1):  # number of roots to exclude
+                cache_size_gain = True
+                for i in range(0, self.cache_size + 1):  # possible cache size
+                    if cache_size_gain:
+                        max_weight, (i_star, r_star, j_star) = self.OptDTUnion_it(Y_data, j, r, i, children_array)
                     if max_weight >= 0:
                         Y_data[(j, r, i)] = max_weight
-                        # if Y_data[(j, r, i - 1)] == Y_data[(j, r, i)]
+                        if i > 1 and Y_data.get((j, r, i - 1), -1) == Y_data[(j, r, i)]:
+                            cache_size_gain = False
                         # No extra gain from increasing cache size, we can stop calling self.OptDTUnion_it
-
 
                         if self.track_solution_set:
                             self.OptDTUnion_update_max_weight_solution(j, r, i, (i_star, r_star, j_star), Y_solution,
@@ -514,11 +536,11 @@ class OptimalLPMCache:
             curr_p = 0.1
             print(progress_bar)
             for idx, vtx in enumerate(self.depth_dict[depth]):
-                # if time.time() - t0 > 60 * 5:
-                #     profiler.disable()
-                #     stats = pstats.Stats(profiler).sort_stats('tottime')
-                #     stats.dump_stats('main_loop.prof')
-                #     return
+                #     if time.time() - t0 > 60 * 5:
+                #         profiler.disable()
+                #         stats = pstats.Stats(profiler).sort_stats('tottime')
+                #         stats.dump_stats('main_loop.prof')
+                #         return
 
                 self.apply_on_vtx(vtx)
                 if idx / len(self.depth_dict[depth]) > curr_p:
@@ -526,13 +548,14 @@ class OptimalLPMCache:
                     progress_bar = "".join(["="] * pb_idx) + progress_bar[pb_idx + 1:]
                     curr_p += idx / len(self.depth_dict[depth])
                     status_str = progress_bar + " {0}/{1} elapsed time [sec]: {2}\n".format(idx,
-                                                                                          len(self.depth_dict[depth]),
-                                                                                          time.time() - t0)
-                    self.logfile.write(status_str)
-                    self.logfile.flush()
+                                                                                            len(self.depth_dict[depth]),
+                                                                                            time.time() - t0)
+                    if self.logfile:
+                        self.logfile.write(status_str)
+                        self.logfile.flush()
                     # print(status_str)
 
-        self.gtc_nodes = self.get_gtc()
+        # self.gtc_nodes = self.get_gtc()
 
     def get_gtc(self):
         gtc_nodes = set()

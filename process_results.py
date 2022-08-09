@@ -264,13 +264,13 @@ class RunCheck:
 
     @staticmethod
     def test_random_OptLPM():
-        avg_degree = 2
+        avg_degree = 5
         depth = 6
-        cache_size = 4
+        cache_size = 5
 
-        # avg_degree = 3
-        # depth = 8
-        # cache_size = 5
+        avg_degree = 3
+        depth = 8
+        cache_size = 5
         policy = RunCheck.get_random_policy_and_weight(depth, avg_degree)
         zipf_w = np.random.zipf(1.67, len(policy) - 1)
         prefix_weight = {p: zipf_w[idx] for idx, p in enumerate(policy[1:])}
@@ -278,37 +278,44 @@ class RunCheck:
         print("prefix_weight = {0}".format(prefix_weight))
 
         prefix_weight[ROOT_PREFIX] = 0
-        algorithm = OptimalLPMCache(policy, prefix_weight, cache_size)
+        # algorithm = OptimalLPMCache(policy, prefix_weight, cache_size, )
+
+        alg1 = OptimalLPMCache(policy, prefix_weight, cache_size, None, True)
+        alg2 = OptimalLPMCache(policy, prefix_weight, cache_size, None, False)
+
         print("Policy size: {0} avg_degree :{1} depth: {2}".format(len(policy), avg_degree, depth))
         t0 = time.time()
-        algorithm.get_optimal_cache()
+        alg2.get_optimal_cache()
+        alg1.get_optimal_cache()
+
         elapsed_time = time.time() - t0
-        print("algorithm.vtx_S[ROOT][1][cache_size] : {0}".format(algorithm.vtx_S[ROOT][1][cache_size]))
-        print(
-            "cached rules: {0} gtc nodes: {1}".format(len(algorithm.S[ROOT][1][cache_size]), len(algorithm.gtc_nodes)))
-        print("Cache size: {0} Total cache entries used: {1}".format(cache_size,
-                                                                     len(algorithm.S[ROOT][1][cache_size]) + len(
-                                                                         algorithm.gtc_nodes)))
-        print("elapsed_time: {0} sec".format(elapsed_time))
+        print(alg1.vtx_S[ROOT][1][4] == alg2.vtx_S[ROOT][1][4])
+        # print("algorithm.vtx_S[ROOT][1][cache_size] : {0}".format(algorithm.vtx_S[ROOT][1][cache_size]))
+        # print(
+        #     "cached rules: {0} gtc nodes: {1}".format(len(algorithm.S[ROOT][1][cache_size]), len(algorithm.gtc_nodes)))
+        # print("Cache size: {0} Total cache entries used: {1}".format(cache_size,
+        #                                                              len(algorithm.S[ROOT][1][cache_size]) + len(
+        #                                                                  algorithm.gtc_nodes)))
+        # print("elapsed_time: {0} sec".format(elapsed_time))
 
-        color_map = []
-        for vtx in algorithm.policy_tree.nodes:
-            # color_map.append('green')
-            if vtx in algorithm.S[ROOT][1][cache_size]:
-                color_map.append('pink')
-                continue
-            if vtx in algorithm.gtc_nodes:
-                color_map.append('gray')
-                continue
-            else:
-                color_map.append('lime')
-
-        labels = {v: str(v) + "\n" + str(prefix_weight[algorithm.vertex_to_rule[v]])
-                  for idx, v in enumerate(algorithm.policy_tree.nodes)}
-
-        # nx.draw(algorithm.policy_tree, labels=labels)
-        Utils.draw_tree(algorithm.policy_tree, labels, color_map=color_map)
-        plt.show()
+        # color_map = []
+        # for vtx in algorithm.policy_tree.nodes:
+        #     # color_map.append('green')
+        #     if vtx in algorithm.S[ROOT][1][cache_size]:
+        #         color_map.append('pink')
+        #         continue
+        #     if vtx in algorithm.gtc_nodes:
+        #         color_map.append('gray')
+        #         continue
+        #     else:
+        #         color_map.append('lime')
+        #
+        # labels = {v: str(v) + "\n" + str(prefix_weight[algorithm.vertex_to_rule[v]])
+        #           for idx, v in enumerate(algorithm.policy_tree.nodes)}
+        #
+        # # nx.draw(algorithm.policy_tree, labels=labels)
+        # Utils.draw_tree(algorithm.policy_tree, labels, color_map=color_map)
+        # plt.show()
 
 
 class ResultToTable:
@@ -1025,8 +1032,8 @@ def create_heatmap():
 
 
 def main():
-    # RunCheck.test_random_OptLPM()
-    RunCheck.running_example()
+    RunCheck.test_random_OptLPM()
+    # RunCheck.running_example()
 
 
 if __name__ == "__main__":

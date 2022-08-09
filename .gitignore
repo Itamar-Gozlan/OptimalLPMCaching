@@ -8,6 +8,7 @@ tmp*
 *.txt
 *.out
 *.jpg
+*.prof
 Figures/
 Caida/
 run_sc/

@@ -8,6 +8,7 @@ import itertools
 import copy
 import numpy as np
 import pandas as pd
+import time
 
 ROOT = 0
 ROOT_PREFIX = '0.0.0.0/0'
@@ -342,7 +343,7 @@ class OptimalLPMCache:
     Don't keep 0 results
     """
 
-    def __init__(self, policy, prefix_weight, cache_size):
+    def __init__(self, policy, prefix_weight, cache_size, logfile_path):
         self.policy_tree, self.rule_to_vertex, self.successors = HeuristicLPMCache.process_policy(policy)
         self.vertex_to_rule = {value: key for key, value in self.rule_to_vertex.items()}
         self.depth_dict = HeuristicLPMCache.construct_depth_dict(self.policy_tree)
@@ -352,6 +353,8 @@ class OptimalLPMCache:
         self.vtx_S = {}
         self.S = {}
         self.gtc_nodes = None
+        self.track_solution_set = False
+        self.logfile = open(logfile_path, 'w+')
 
     def OptDTUnion_it(self, Y_data, j, r, i, children_array):
         # case_log = []
@@ -360,9 +363,6 @@ class OptimalLPMCache:
         weight_with_S1 = None
         (i_star, r_star, j_star) = (-1, -1, -1)
         for i_t in range(i + 1):
-            """
-            S1 is always defined
-            """
             S0j_imi_t = self.vtx_S[children_array[j - 1]][0].get(i - i_t, 0)  # S0
             S1j_imi_t = self.vtx_S[children_array[j - 1]][1].get(i - i_t, 0)  # S1
             if j == 1:  # initialization
@@ -371,11 +371,13 @@ class OptimalLPMCache:
                 if r < j and S0j_imi_t is not None:
                     weight_with_S0 = S0j_imi_t
             else:  # step
-                if r - 1 >= 0 and Y_data.get((j - 1, r - 1, i_t)) is not None:
-                    weight_with_S1 = Y_data[(j - 1, r - 1, i_t)] + S1j_imi_t
+                Y_data_jm1_rm1 = Y_data.get((j - 1, r - 1, i_t))  # avoid extra get
+                if r - 1 >= 0 and Y_data_jm1_rm1 is not None:
+                    weight_with_S1 = Y_data_jm1_rm1 + S1j_imi_t
 
-                if r < j and Y_data.get((j - 1, r, i_t)) is not None and S0j_imi_t is not None:
-                    weight_with_S0 = Y_data[(j - 1, r, i_t)] + S0j_imi_t
+                Y_data_jm1_r = Y_data.get((j - 1, r, i_t))
+                if r < j and Y_data_jm1_r is not None and S0j_imi_t is not None:
+                    weight_with_S0 = Y_data_jm1_r + S0j_imi_t
 
             if weight_with_S1 is None and weight_with_S0 is None:
                 continue
@@ -398,8 +400,6 @@ class OptimalLPMCache:
         return max_weight, (i_star, r_star, j_star)
 
     def OptDTUnion_update_max_weight_solution(self, j, r, i, star, Y_solution, children_array, max_weight, Y_data):
-        # if 24 in children_array and (j,r,i) == (2, 1, 4):
-        #     print("missing 18")
         get_Sj0i = lambda j_child, idx: self.S.get(children_array[j_child - 1], {}).get(0, {}).get(idx,
                                                                                                    set())
         get_Sj1i = lambda j_child, idx: self.S.get(children_array[j_child - 1], {}).get(1, {}).get(idx,
@@ -429,17 +429,21 @@ class OptimalLPMCache:
                     max_weight, (i_star, r_star, j_star) = self.OptDTUnion_it(Y_data, j, r, i, children_array)
                     if max_weight >= 0:
                         Y_data[(j, r, i)] = max_weight
-                        self.OptDTUnion_update_max_weight_solution(j, r, i, (i_star, r_star, j_star), Y_solution,
-                                                                   children_array, max_weight, Y_data)
-            if j - 2 > 0: # TODO: memory optimization: remove j-1
+                        # if Y_data[(j, r, i - 1)] == Y_data[(j, r, i)]
+                        # No extra gain from increasing cache size, we can stop calling self.OptDTUnion_it
+
+
+                        if self.track_solution_set:
+                            self.OptDTUnion_update_max_weight_solution(j, r, i, (i_star, r_star, j_star), Y_solution,
+                                                                       children_array, max_weight, Y_data)
+            if j - 2 > 0:  # TODO: memory optimization: remove j-1
                 for r in range(0, j - 2):  # number of roots to exclude
                     for i in range(0, self.cache_size + 1):  # possible cache size
-                        if (j-2, r, i) in Y_data:
-                            del Y_data[(j-2, r, i)]
+                        if (j - 2, r, i) in Y_data:
+                            del Y_data[(j - 2, r, i)]
 
-                        if (j-2, r, i) in Y_solution:
-                            del Y_solution[(j-2, r, i)]
-
+                        if (j - 2, r, i) in Y_solution:
+                            del Y_solution[(j - 2, r, i)]
 
         return Y_data, Y_solution  # by reference
 
@@ -451,22 +455,26 @@ class OptimalLPMCache:
         if self.deg_out[vtx] == 0:
             for i in range(1, self.cache_size + 1):
                 Y_data[(vtx, 0, i)] = self.node_weight[vtx]  # S0, S1 for leaf
-                Y_solution[(vtx, 0, i)] = set([vtx])
                 Y_tilde_data[(0, 1, i)] = 0  # S0, S1 for leaf
-                Y_tilde_solution[(0, 1, i)] = set()
+
+                if self.track_solution_set:
+                    Y_solution[(vtx, 0, i)] = set([vtx])
+                    Y_tilde_solution[(0, 1, i)] = set()
 
         else:  # vtx != leaf
             Y_tilde_data, Y_tilde_solution = self.OptDTUnion(self.successors[vtx], vtx)  # (j, r, i)
-            for i in range(self.cache_size + 1):
-                for r in range(self.deg_out[vtx] + 1):
-                    j_maybe = i + r + 1  # potential cache size to splice -> Y(x,r,j) is defined empty if not feasible
-                    if self.deg_out[vtx] + 1 <= j_maybe <= self.cache_size:
-                        if Y_tilde_data.get((self.deg_out[vtx], r, i)) is not None:
-                            weight_maybe = Y_tilde_data.get((self.deg_out[vtx], r, i), 0) + self.node_weight[vtx]
-                            if Y_data.get((vtx, r, j_maybe), 0) < weight_maybe:
-                                Y_data[(vtx, r, j_maybe)] = weight_maybe
-                                Y_solution[(vtx, r, j_maybe)] = Y_tilde_solution.get((self.deg_out[vtx], r, i),
-                                                                                     set()).union(set([vtx]))
+            if vtx != ROOT:
+                for i in range(self.cache_size + 1):
+                    for r in range(self.deg_out[vtx] + 1):
+                        j_maybe = i + r + 1  # potential cache size to splice -> Y(x,r,j) is defined empty if not feasible
+                        if self.deg_out[vtx] + 1 <= j_maybe <= self.cache_size:
+                            if Y_tilde_data.get((self.deg_out[vtx], r, i)) is not None:
+                                weight_maybe = Y_tilde_data.get((self.deg_out[vtx], r, i), 0) + self.node_weight[vtx]
+                                if Y_data.get((vtx, r, j_maybe), 0) < weight_maybe:
+                                    Y_data[(vtx, r, j_maybe)] = weight_maybe
+                                    if self.track_solution_set:
+                                        Y_solution[(vtx, r, j_maybe)] = Y_tilde_solution.get((self.deg_out[vtx], r, i),
+                                                                                             set()).union(set([vtx]))
 
         # initialize S(x,0,j), S(x,1,j)
         # initializing with 0, weight of empty set
@@ -479,11 +487,13 @@ class OptimalLPMCache:
                 for r_tag in range(self.deg_out[vtx] + 1):
                     if Y_data.get((vtx, r_tag, j), None) is not None and Y_data[(vtx, r_tag, j)] > S0_weight.get(j, 0):
                         S0_weight[j] = Y_data[(vtx, r_tag, j)]
-                        self.S[vtx][0][j] = Y_solution.get((vtx, r_tag, j), set())
+                        if self.track_solution_set:
+                            self.S[vtx][0][j] = Y_solution.get((vtx, r_tag, j), set())
 
                     if Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0) > S1_weight.get(j, -1):
                         S1_weight[j] = Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0)
-                        self.S[vtx][1][j] = Y_tilde_solution.get((self.deg_out[vtx], r_tag, j), set())
+                        if self.track_solution_set:
+                            self.S[vtx][1][j] = Y_tilde_solution.get((self.deg_out[vtx], r_tag, j), set())
 
         for i in range(self.cache_size):
             if i not in S0_weight:
@@ -494,10 +504,33 @@ class OptimalLPMCache:
         self.vtx_S[vtx] = [S0_weight, S1_weight]
 
     def get_optimal_cache(self):
+        # import cProfile, pstats
+        # profiler = cProfile.Profile()
+        # profiler.enable()
+        t0 = time.time()
         for depth in sorted(list(self.depth_dict.keys()), reverse=True)[:-1]:
             print("depth: {0}, nodes in depth: {1}".format(depth, len(self.depth_dict[depth])))
-            for vtx in self.depth_dict[depth]:
+            progress_bar = "----------"
+            curr_p = 0.1
+            print(progress_bar)
+            for idx, vtx in enumerate(self.depth_dict[depth]):
+                # if time.time() - t0 > 60 * 5:
+                #     profiler.disable()
+                #     stats = pstats.Stats(profiler).sort_stats('tottime')
+                #     stats.dump_stats('main_loop.prof')
+                #     return
+
                 self.apply_on_vtx(vtx)
+                if idx / len(self.depth_dict[depth]) > curr_p:
+                    pb_idx = int(10 * curr_p)
+                    progress_bar = "".join(["="] * pb_idx) + progress_bar[pb_idx + 1:]
+                    curr_p += idx / len(self.depth_dict[depth])
+                    status_str = progress_bar + " {0}/{1} elapsed time [sec]: {2}\n".format(idx,
+                                                                                          len(self.depth_dict[depth]),
+                                                                                          time.time() - t0)
+                    self.logfile.write(status_str)
+                    self.logfile.flush()
+                    # print(status_str)
 
         self.gtc_nodes = self.get_gtc()
 
@@ -515,18 +548,17 @@ class OptimalLPMCache:
             json.dump(self.vtx_S[0][1], f)
         with open(dir_path + '/vertex_to_rule.json', 'w') as f:
             json.dump(self.vertex_to_rule, f)
-        with open(dir_path + '/S.json', 'w') as f:
-            jsonable_cache_set = {k: list(v) for k,v in self.S[ROOT][1].items()}
-            json.dump(jsonable_cache_set, f)
+        if self.track_solution_set:
+            with open(dir_path + '/S.json', 'w') as f:
+                jsonable_cache_set = {k: list(v) for k, v in self.S[ROOT][1].items()}
+                json.dump(jsonable_cache_set, f)
         total_weight = sum(self.node_weight.values())
         df = pd.DataFrame(columns=["Cache Size", "Hit Rate"])
         for i in range(self.cache_size + 1):
-            row = {"Cache Size" : i,
-                   "Hit Rate": 100*self.vtx_S[ROOT][1][i]/total_weight}
+            row = {"Cache Size": i,
+                   "Hit Rate": 100 * self.vtx_S[ROOT][1][i] / total_weight}
             df = df.append(row, ignore_index=True)
         df.to_csv(dir_path + '/result.csv')
-
-
 
     @staticmethod
     def Y_data_j_to_df(Y_data, j, cache_size):

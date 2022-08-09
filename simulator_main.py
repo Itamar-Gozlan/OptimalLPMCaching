@@ -134,18 +134,20 @@ def offline_simulator():
     if 'zipf' in prefix_weight_json_path:
         threshold = 15
     else:
-        threshold = 1
+        threshold = 99000
     shorter_prefix_weight = {k: np.int64(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
+    shorter_prefix_weight['0.0.0.0/0'] = 0
     cache_size = 1024
     print(len(shorter_prefix_weight))
     t0 = time.time()
-    opt_cache_algorithm = OptimalLPMCache(policy=list(prefix_weight.keys()),
-                                          prefix_weight=prefix_weight,
-                                          cache_size=cache_size)
+    opt_cache_algorithm = OptimalLPMCache(policy=list(shorter_prefix_weight.keys()),
+                                          prefix_weight=shorter_prefix_weight,
+                                          cache_size=cache_size,
+                                          logfile_path=dir_path + "/log.out")
 
     print(time.time() - t0)
     t0 = time.time()
-    opt_cache_algorithm.get_cache(shorter_prefix_weight)
+    opt_cache_algorithm.get_optimal_cache()
     print(time.time() - t0)
     opt_cache_algorithm.to_json(dir_path)
 

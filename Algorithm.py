@@ -329,21 +329,8 @@ class OnlineTreeCache:
 
 
 # ----------------------- OptimalLPMCache -----------------------
-"""
-r - root to exclude
-"""
-
-
 class OptimalLPMCache:
-    """
-    Ideas:
-    Memory optimization - delete pred depth data structure
-    cut loops
-    Don't run OptDTUnion of leaves
-    Don't keep 0 results
-    """
-
-    def __init__(self, policy, prefix_weight, cache_size, logfile_path, optimize_for_leafs=True):
+    def __init__(self, policy, prefix_weight, cache_size):
         self.policy_tree, self.rule_to_vertex, self.successors = HeuristicLPMCache.process_policy(policy)
         # optimizing for leafs
         self.successors = {k: sorted(v, key=lambda vx: len(self.successors[vx])) for k, v in self.successors.items()}
@@ -355,15 +342,82 @@ class OptimalLPMCache:
         self.vtx_S = {}
         self.S = {}
         self.gtc_nodes = None
-        self.track_solution_set = False
-        if logfile_path:
-            self.logfile = open(logfile_path, 'w+')
-        else:
-            self.logfile = None
-        self.optimize_for_leafs = optimize_for_leafs
+
+    def get_optimal_cache(self):
+        for depth in sorted(list(self.depth_dict.keys()), reverse=True)[:-1]:
+            for idx, vtx in enumerate(self.depth_dict[depth]):
+                self.apply_on_vtx(vtx)
+
+        self.gtc_nodes = self.get_gtc()
+
+    def apply_on_vtx(self, vtx):
+        Y_data = {}
+        Y_tilde_data = {}
+        Y_solution = {}
+        Y_tilde_solution = {}
+        if self.deg_out[vtx] == 0:
+            for i in range(1, self.cache_size + 1):
+                Y_data[(vtx, 0, i)] = self.node_weight[vtx]  # S0, S1 for leaf
+                Y_tilde_data[(0, 1, i)] = 0  # S0, S1 for leaf
+                Y_solution[(vtx, 0, i)] = set([vtx])
+                Y_tilde_solution[(0, 1, i)] = set()
+
+        Y_tilde_data, Y_tilde_solution = self.OptDTUnion(self.successors[vtx], vtx)  # (j, r, i)
+        for i in range(self.cache_size + 1):
+            for r in range(self.deg_out[vtx] + 1):
+                j_maybe = i + r + 1  # potential cache size to splice -> Y(x,r,j) is defined empty if not feasible
+                if self.deg_out[vtx] + 1 <= j_maybe <= self.cache_size:
+                    if Y_tilde_data.get((self.deg_out[vtx], r, i)) is not None:
+                        weight_maybe = Y_tilde_data.get((self.deg_out[vtx], r, i), 0) + self.node_weight[vtx]
+                        if Y_data.get((vtx, r, j_maybe), 0) < weight_maybe:
+                            Y_data[(vtx, r, j_maybe)] = weight_maybe
+                            Y_solution[(vtx, r, j_maybe)] = Y_tilde_solution.get((self.deg_out[vtx], r, i),
+                                                                                 set()).union(set([vtx]))
+
+        # initialize S(x,0,j), S(x,1,j)
+        # initializing with 0, weight of empty set
+        S0_weight = {0: None}
+        S1_weight = {}
+        self.S[vtx] = {0: {}, 1: {}}
+        # (vtx, r, i) - (jth child, excluded nodes, cache size)
+        for j in range(0, self.cache_size + 1):
+            for r in range(0, self.deg_out[vtx] + 1):
+                for r_tag in range(self.deg_out[vtx] + 1):
+                    if Y_data.get((vtx, r_tag, j), None) is not None and Y_data[(vtx, r_tag, j)] > S0_weight.get(j, 0):
+                        S0_weight[j] = Y_data[(vtx, r_tag, j)]
+                        self.S[vtx][0][j] = Y_solution.get((vtx, r_tag, j), set())
+
+                    if Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0) > S1_weight.get(j, -1):
+                        S1_weight[j] = Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0)
+                        self.S[vtx][1][j] = Y_tilde_solution.get((self.deg_out[vtx], r_tag, j), set())
+
+        for i in range(self.cache_size):
+            if i not in S0_weight:
+                S0_weight[i] = None
+            if i not in S1_weight:
+                S1_weight[i] = None
+
+        self.vtx_S[vtx] = [S0_weight, S1_weight]
+
+    # -------------------------- OptDTUnion --------------------------
+
+    def OptDTUnion(self, children_array, vtx):  # return (m,k) collection of SplicingFeasble sets
+        # (j,r,i) - Optimal weight of T(<=j) with excluding r vertices
+        Y_solution = {}
+        Y_data = {}
+
+        for j in range(1, self.deg_out[vtx] + 1):  # j=1,..,m -> extend solution to include Ty
+            for r in range(0, j + 1):  # number of roots to exclude
+                for i in range(0, self.cache_size + 1):  # possible cache size
+                    max_weight, (i_star, r_star, j_star) = self.OptDTUnion_it(Y_data, j, r, i, children_array)
+                    if max_weight >= 0:
+                        Y_data[(j, r, i)] = max_weight
+                        self.OptDTUnion_update_max_weight_solution(j, r, i, (i_star, r_star, j_star), Y_solution,
+                                                                   children_array, max_weight, Y_data)
+
+        return Y_data, Y_solution  # by reference
 
     def OptDTUnion_it(self, Y_data, j, r, i, children_array):
-        # case_log = []
         max_weight = -1
         weight_with_S0 = None
         weight_with_S1 = None
@@ -425,105 +479,61 @@ class OptimalLPMCache:
             if weight_with_S1_t != max_weight:
                 print('Err')
 
-    def OptDTUnion(self, children_array, vtx):  # return (m,k) collection of SplicingFeasble sets
-        # (j,r,i) - Optimal weight of T(<=j) with excluding r vertices
-        Y_data = {}  # (j,r,i)
-        Y_solution = {}
-        n_child_leafs = 0
-        if self.optimize_for_leafs == 0:
-            n_child_leafs = 0
-            while len(children_array) > n_child_leafs and len(self.successors[children_array[n_child_leafs]]) == 0:
-                n_child_leafs += 1
+    def get_gtc(self):
+        gtc_nodes = set()
+        for vtx in self.S[ROOT][1][self.cache_size]:
+            for gtc in set(self.policy_tree.neighbors(vtx)) - self.S[ROOT][1][self.cache_size]:
+                gtc_nodes.add(gtc)
+        return gtc_nodes
 
-            sorted_leafs_weight = sorted([self.node_weight[v] for v in children_array[:n_child_leafs]], reverse=True)
-            for r in range(0, n_child_leafs + 1):  # number of roots to exclude
-                for i in range(0, self.cache_size + 1):  # possible cache size
-                    leafs_to_choose = n_child_leafs - r
-                    if leafs_to_choose <= i:
-                        Y_data[(n_child_leafs, r, i)] = sum(sorted_leafs_weight[:leafs_to_choose])
+    # -------------------------- Analyze Solution --------------------------
+    @staticmethod
+    def Y_data_j_to_df(Y_data, j, cache_size):
+        np_data_2d = np.zeros((cache_size + 1, j + 1))
+        for r in range(j + 1):
+            for i in range(cache_size + 1):
+                np_data_2d[i, r] = Y_data.get((j, r, i), -1)
 
-        print("Non leafs children: {0}".format(self.deg_out[vtx] - n_child_leafs))
-        for j in range(n_child_leafs + 1, self.deg_out[vtx] + 1):  # j=1,..,m -> extend solution to include Ty
-            for r in range(0, j + 1):  # number of roots to exclude
-                cache_size_gain = True
-                for i in range(0, self.cache_size + 1):  # possible cache size
-                    if cache_size_gain:
-                        max_weight, (i_star, r_star, j_star) = self.OptDTUnion_it(Y_data, j, r, i, children_array)
-                    if max_weight >= 0:
-                        Y_data[(j, r, i)] = max_weight
-                        if i > 1 and Y_data.get((j, r, i - 1), -1) == Y_data[(j, r, i)]:
-                            cache_size_gain = False
-                        # No extra gain from increasing cache size, we can stop calling self.OptDTUnion_it
+        return np_data_2d
 
-                        if self.track_solution_set:
-                            self.OptDTUnion_update_max_weight_solution(j, r, i, (i_star, r_star, j_star), Y_solution,
-                                                                       children_array, max_weight, Y_data)
-            if j - 2 > 0:  # TODO: memory optimization: remove j-1
-                for r in range(0, j - 2):  # number of roots to exclude
-                    for i in range(0, self.cache_size + 1):  # possible cache size
-                        if (j - 2, r, i) in Y_data:
-                            del Y_data[(j - 2, r, i)]
+    @staticmethod
+    def solution_to_df(solution, j, cache_size):
+        return pd.DataFrame([[str(solution.get((j, r, i), '{}')) for r in range(j + 1)] for i in range(cache_size + 1)])
 
-                        if (j - 2, r, i) in Y_solution:
-                            del Y_solution[(j - 2, r, i)]
+    @staticmethod
+    def Y_data_2D_to_DF(Y_data, j, cache_size):
+        np_data_2d = np.zeros((cache_size + 1, j + 1))
+        for r in range(j + 1):
+            for i in range(cache_size + 1):
+                np_data_2d[i, r] = Y_data.get((j, i), -1)
 
-        return Y_data, Y_solution  # by reference
+        return np_data_2d
 
-    def apply_on_vtx(self, vtx):
-        Y_data = {}
-        Y_tilde_data = {}
-        Y_solution = {}
-        Y_tilde_solution = {}
-        if self.deg_out[vtx] == 0:
-            for i in range(1, self.cache_size + 1):
-                Y_data[(vtx, 0, i)] = self.node_weight[vtx]  # S0, S1 for leaf
-                Y_tilde_data[(0, 1, i)] = 0  # S0, S1 for leaf
 
-                if self.track_solution_set:
-                    Y_solution[(vtx, 0, i)] = set([vtx])
-                    Y_tilde_solution[(0, 1, i)] = set()
+class OptimizedOptimalLPMCache:
+    """
+    Ideas:
+    Memory optimization - delete pred depth data structure
+    cut loops
+    Don't run OptDTUnion of leaves
+    Don't keep 0 results
+    """
 
-        else:  # vtx != leaf
-            Y_tilde_data, Y_tilde_solution = self.OptDTUnion(self.successors[vtx], vtx)  # (j, r, i)
-            if vtx != ROOT:
-                for i in range(self.cache_size + 1):
-                    for r in range(self.deg_out[vtx] + 1):
-                        j_maybe = i + r + 1  # potential cache size to splice -> Y(x,r,j) is defined empty if not feasible
-                        if self.deg_out[vtx] + 1 <= j_maybe <= self.cache_size:
-                            if Y_tilde_data.get((self.deg_out[vtx], r, i)) is not None:
-                                weight_maybe = Y_tilde_data.get((self.deg_out[vtx], r, i), 0) + self.node_weight[vtx]
-                                if Y_data.get((vtx, r, j_maybe), 0) < weight_maybe:
-                                    Y_data[(vtx, r, j_maybe)] = weight_maybe
-                                    if self.track_solution_set:
-                                        Y_solution[(vtx, r, j_maybe)] = Y_tilde_solution.get((self.deg_out[vtx], r, i),
-                                                                                             set()).union(set([vtx]))
-
-        # initialize S(x,0,j), S(x,1,j)
-        # initializing with 0, weight of empty set
-        S0_weight = {0: None}
-        S1_weight = {}
-        self.S[vtx] = {0: {}, 1: {}}
-        # (vtx, r, i) - (jth child, excluded nodes, cache size)
-        for j in range(0, self.cache_size + 1):
-            for r in range(0, self.deg_out[vtx] + 1):
-                for r_tag in range(self.deg_out[vtx] + 1):
-                    if Y_data.get((vtx, r_tag, j), None) is not None and Y_data[(vtx, r_tag, j)] > S0_weight.get(j, 0):
-                        S0_weight[j] = Y_data[(vtx, r_tag, j)]
-                        if self.track_solution_set:
-                            self.S[vtx][0][j] = Y_solution.get((vtx, r_tag, j), set())
-
-                    if Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0) > S1_weight.get(j, -1):
-                        S1_weight[j] = Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0)
-                        if self.track_solution_set:
-                            self.S[vtx][1][j] = Y_tilde_solution.get((self.deg_out[vtx], r_tag, j), set())
-
-        for i in range(self.cache_size):
-            if i not in S0_weight:
-                S0_weight[i] = None
-            if i not in S1_weight:
-                S1_weight[i] = None
-
-        self.vtx_S[vtx] = [S0_weight, S1_weight]
+    def __init__(self, policy, prefix_weight, cache_size, logfile_path=None):
+        self.policy_tree, self.rule_to_vertex, self.successors = HeuristicLPMCache.process_policy(policy)
+        # optimizing for leafs
+        self.successors = {k: sorted(v, key=lambda vx: len(self.successors[vx])) for k, v in self.successors.items()}
+        self.vertex_to_rule = {value: key for key, value in self.rule_to_vertex.items()}
+        self.depth_dict = HeuristicLPMCache.construct_depth_dict(self.policy_tree)
+        self.deg_out = {v: self.policy_tree.out_degree(v) for v in self.policy_tree.nodes}
+        self.node_weight = {v: prefix_weight[self.vertex_to_rule[v]] for v in self.policy_tree.nodes}
+        self.cache_size = cache_size
+        self.vtx_S = {}
+        self.S = {}
+        if logfile_path:
+            self.logfile = open(logfile_path, 'w+')
+        else:
+            self.logfile = None
 
     def get_optimal_cache(self):
         # import cProfile, pstats
@@ -553,16 +563,197 @@ class OptimalLPMCache:
                     if self.logfile:
                         self.logfile.write(status_str)
                         self.logfile.flush()
-                    # print(status_str)
+                    print(status_str)
 
-        # self.gtc_nodes = self.get_gtc()
+    def apply_on_vtx(self, vtx):
+        Y_data = {}
+        Y_tilde_data = {}
+        if self.deg_out[vtx] == 0:
+            for i in range(1, self.cache_size + 1):
+                Y_data[(vtx, 0, i)] = self.node_weight[vtx]  # S0, S1 for leaf
+                Y_tilde_data[(0, 1, i)] = 0  # S0, S1 for leaf
 
-    def get_gtc(self):
-        gtc_nodes = set()
-        for vtx in self.S[ROOT][1][self.cache_size]:
-            for gtc in set(self.policy_tree.neighbors(vtx)) - self.S[ROOT][1][self.cache_size]:
-                gtc_nodes.add(gtc)
-        return gtc_nodes
+        else:  # vtx != leaf
+            if vtx != ROOT:
+                Y_tilde_data = self.OptDTUnion(self.successors[vtx], vtx)  # (j, r, i)
+                for i in range(self.cache_size + 1):
+                    for r in range(self.deg_out[vtx] + 1):
+                        j_maybe = i + r + 1  # potential cache size to splice -> Y(x,r,j) is defined empty if not feasible
+                        if self.deg_out[vtx] + 1 <= j_maybe <= self.cache_size:
+                            if Y_tilde_data.get((self.deg_out[vtx], r, i)) is not None:
+                                weight_maybe = Y_tilde_data.get((self.deg_out[vtx], r, i), 0) + self.node_weight[vtx]
+                                if Y_data.get((vtx, r, j_maybe), 0) < weight_maybe:
+                                    Y_data[(vtx, r, j_maybe)] = weight_maybe
+
+            else:  # vtx == ROOT
+                Y_data = self.GreedyDTUnion(self.successors[vtx], vtx)  # (j, i)
+                S1_weight = {}
+                S0_weight = {}
+                for i in range(self.cache_size + 1):
+                    S1_weight[i] = Y_data.get((self.deg_out[ROOT], i), 0)
+                self.vtx_S[vtx] = [S0_weight, S1_weight]
+                return
+
+        # initialize S(x,0,j), S(x,1,j)
+        # initializing with 0, weight of empty set
+        S0_weight = {0: None}
+        S1_weight = {}
+        self.S[vtx] = {0: {}, 1: {}}
+        # (vtx, r, i) - (jth child, excluded nodes, cache size)
+        for j in range(0, self.cache_size + 1):
+            for r in range(0, self.deg_out[vtx] + 1):
+                for r_tag in range(self.deg_out[vtx] + 1):
+                    if Y_data.get((vtx, r_tag, j), None) is not None and Y_data[(vtx, r_tag, j)] > S0_weight.get(j, 0):
+                        S0_weight[j] = Y_data[(vtx, r_tag, j)]
+
+                    if Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0) > S1_weight.get(j, -1):
+                        S1_weight[j] = Y_tilde_data.get((self.deg_out[vtx], r_tag, j), 0)
+
+        for i in range(self.cache_size):
+            if i not in S0_weight:
+                S0_weight[i] = None
+            if i not in S1_weight:
+                S1_weight[i] = None
+
+        self.vtx_S[vtx] = [S0_weight, S1_weight]
+
+    # -------------------------- OptDTUnion --------------------------
+
+    def OptDTUnion(self, children_array, vtx):  # return (m,k) collection of SplicingFeasble sets
+        # (j,r,i) - Optimal weight of T(<=j) with excluding r vertices
+        Y_data, n_child_leafs = self.calculate_leafs_Y_data(children_array)
+
+        print("Non leafs children: {0}".format(self.deg_out[vtx] - n_child_leafs))
+        for j in range(n_child_leafs + 1, self.deg_out[vtx] + 1):  # j=1,..,m -> extend solution to include Ty
+            for r in range(0, j + 1):  # number of roots to exclude
+                cache_size_gain = True
+                for i in range(0, self.cache_size + 1):  # possible cache size
+                    if cache_size_gain:
+                        max_weight, (i_star, r_star, j_star) = self.OptDTUnion_it(Y_data, j, r, i, children_array)
+                    if max_weight >= 0:
+                        Y_data[(j, r, i)] = max_weight
+                        if i > 1 and Y_data.get((j, r, i - 1), -1) == Y_data[(j, r, i)]:
+                            cache_size_gain = False
+                        # No extra gain from increasing cache size, we can stop calling self.OptDTUnion_it
+
+            if j - 2 > 0:  # memory optimization: remove j-1
+                for r in range(0, j - 2):  # number of roots to exclude
+                    for i in range(0, self.cache_size + 1):  # possible cache size
+                        if (j - 2, r, i) in Y_data:
+                            del Y_data[(j - 2, r, i)]
+
+        return Y_data  # by reference
+
+    def calculate_leafs_Y_data(self, children_array):
+        Y_data = {}  # (j,r,i)
+        n_child_leafs = 0
+        while len(children_array) > n_child_leafs and len(self.successors[children_array[n_child_leafs]]) == 0:
+            n_child_leafs += 1
+
+        sorted_leafs_weight = sorted([self.node_weight[v] for v in children_array[:n_child_leafs]], reverse=True)
+        for r in range(0, n_child_leafs + 1):  # number of roots to exclude
+            for i in range(0, self.cache_size + 1):  # possible cache size
+                leafs_to_choose = n_child_leafs - r
+                if leafs_to_choose <= i:
+                    Y_data[(n_child_leafs, r, i)] = sum(sorted_leafs_weight[:leafs_to_choose])
+        return Y_data, n_child_leafs
+
+    def OptDTUnion_it(self, Y_data, j, r, i, children_array):
+        max_weight = -1
+        weight_with_S0 = None
+        weight_with_S1 = None
+        (i_star, r_star, j_star) = (-1, -1, -1)
+        for i_t in range(i + 1):
+            S0j_imi_t = self.vtx_S[children_array[j - 1]][0].get(i - i_t, 0)  # S0
+            S1j_imi_t = self.vtx_S[children_array[j - 1]][1].get(i - i_t, 0)  # S1
+            if j == 1:  # initialization
+                if r - 1 >= 0:
+                    weight_with_S1 = S1j_imi_t
+                if r < j and S0j_imi_t is not None:
+                    weight_with_S0 = S0j_imi_t
+            else:  # step
+                Y_data_jm1_rm1 = Y_data.get((j - 1, r - 1, i_t))  # avoid extra get
+                if r - 1 >= 0 and Y_data_jm1_rm1 is not None:
+                    weight_with_S1 = Y_data_jm1_rm1 + S1j_imi_t
+
+                Y_data_jm1_r = Y_data.get((j - 1, r, i_t))
+                if r < j and Y_data_jm1_r is not None and S0j_imi_t is not None:
+                    weight_with_S0 = Y_data_jm1_r + S0j_imi_t
+
+            if weight_with_S1 is None and weight_with_S0 is None:
+                continue
+            if weight_with_S0 is not None and weight_with_S1 is not None:
+                if weight_with_S1 > max_weight and weight_with_S1 > weight_with_S0:
+                    max_weight = weight_with_S1
+                    (i_star, r_star, j_star) = (i_t, 0, j)
+                if weight_with_S0 > max_weight and weight_with_S0 >= weight_with_S1:
+                    max_weight = weight_with_S0
+                    (i_star, r_star, j_star) = (i_t, 1, j)
+            elif weight_with_S0 is not None:
+                if weight_with_S0 > max_weight:
+                    max_weight = weight_with_S0
+                    (i_star, r_star, j_star) = (i_t, 1, j)
+            elif weight_with_S1 is not None:
+                if weight_with_S1 > max_weight:
+                    max_weight = weight_with_S1
+                    (i_star, r_star, j_star) = (i_t, 0, j)
+
+        return max_weight, (i_star, r_star, j_star)
+
+    # -------------------------- GreedyDTUnion --------------------------
+
+    def GreedyDTUnion(self, children_array, vtx):
+        Y_data = {}  # (j,r,i)
+        n_child_leafs = 0
+        while len(children_array) > n_child_leafs and len(self.successors[children_array[n_child_leafs]]) == 0:
+            n_child_leafs += 1
+
+        print("GreedyDTUnion: Non leafs children: {0}".format(self.deg_out[vtx] - n_child_leafs))
+
+        sorted_leafs_weight = sorted([self.node_weight[v] for v in children_array[:n_child_leafs]], reverse=True)
+        for i in range(0, self.cache_size + 1):  # possible cache size
+            Y_data[(n_child_leafs, i)] = sum(sorted_leafs_weight[:i])
+
+        for j in range(n_child_leafs + 1, self.deg_out[vtx] + 1):
+            cache_size_gain = True
+            for i in range(0, self.cache_size + 1):
+                max_weight = -1
+                if cache_size_gain:
+                    max_weight = self.GreedyDTUnion_it(Y_data, j, i, children_array)
+
+                if max_weight > 0:
+                    Y_data[(j, i)] = max_weight
+            if j % 100 == 0:
+                print("processing child {0}".format(j))
+
+            if j - 2 > 0:  # memory optimization: remove j-1
+                for r in range(0, j - 2):  # number of roots to exclude
+                    for i in range(0, self.cache_size + 1):  # possible cache size
+                        if (j - 2, r, i) in Y_data:
+                            del Y_data[(j - 2, r, i)]
+
+        return Y_data
+
+    def GreedyDTUnion_it(self, Y_data, j, i, children_array):
+        max_weight = -1
+        for i_t in range(i + 1):
+            max_S_j = -1
+            S0j_imi_t = self.vtx_S[children_array[j - 1]][0].get(i - i_t, 0)  # S0
+            S1j_imi_t = self.vtx_S[children_array[j - 1]][1].get(i - i_t, 0)  # S1
+            if S0j_imi_t is None and S1j_imi_t is None:
+                continue
+            if S0j_imi_t is not None and S1j_imi_t is not None:
+                max_S_j = max(S0j_imi_t, S1j_imi_t)
+
+            elif S0j_imi_t is not None and S1j_imi_t is None:
+                max_S_j = S0j_imi_t
+
+            elif S0j_imi_t is None and S1j_imi_t is not None:
+                max_S_j = S1j_imi_t
+            if max_S_j + Y_data.get((j - 1, i_t), 0) > max_weight:
+                max_weight = max_S_j + Y_data.get((j - 1, i_t), 0)
+
+        return max_weight
 
     def to_json(self, dir_path):
         if not os.path.exists(dir_path):
@@ -571,10 +762,6 @@ class OptimalLPMCache:
             json.dump(self.vtx_S[0][1], f)
         with open(dir_path + '/vertex_to_rule.json', 'w') as f:
             json.dump(self.vertex_to_rule, f)
-        if self.track_solution_set:
-            with open(dir_path + '/S.json', 'w') as f:
-                jsonable_cache_set = {k: list(v) for k, v in self.S[ROOT][1].items()}
-                json.dump(jsonable_cache_set, f)
         total_weight = sum(self.node_weight.values())
         df = pd.DataFrame(columns=["Cache Size", "Hit Rate"])
         for i in range(self.cache_size + 1):
@@ -582,16 +769,3 @@ class OptimalLPMCache:
                    "Hit Rate": 100 * self.vtx_S[ROOT][1][i] / total_weight}
             df = df.append(row, ignore_index=True)
         df.to_csv(dir_path + '/result.csv')
-
-    @staticmethod
-    def Y_data_j_to_df(Y_data, j, cache_size):
-        np_data_2d = np.zeros((cache_size + 1, j + 1))
-        for r in range(j + 1):
-            for i in range(cache_size + 1):
-                np_data_2d[i, r] = Y_data.get((j, r, i), -1)
-
-        return np_data_2d
-
-    @staticmethod
-    def solution_to_df(solution, j, cache_size):
-        return pd.DataFrame([[str(solution.get((j, r, i), '{}')) for r in range(j + 1)] for i in range(cache_size + 1)])

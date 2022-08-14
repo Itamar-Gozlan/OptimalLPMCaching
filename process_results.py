@@ -33,49 +33,40 @@ class RunCheck:
                               f'0b{random_ip:04b}'.split('b')[-1]
                     depth_dict[curr_depth + 1] = [v_rule + bit_str] + depth_dict.get(curr_depth + 1, [])
             curr_depth += 1
+
+        # n_leafs = 100
+        # for i in range(n_leafs):
+        #     n_bits = int((32 / 3))
+        #     random_ip = np.random.randint(0, 2 ** n_bits)
+        #     policy += random_ip
+        #     bit_str = "".join(['0'] * (n_bits - len(f'0b{random_ip:04b}'.split('b')[-1]))) + \
+        #               f'0b{random_ip:04b}'.split('b')[-1]
+        #     depth_dict[curr_depth + 1] = [v_rule + bit_str] + depth_dict.get(curr_depth + 1, [])
+
         policy = []
+
+        import itertools
+        merged = list(itertools.chain(*list(depth_dict.values())))
+        leafs = set()
+        while len(leafs) < 10:
+            random_ip = np.random.randint(0, 2 ** 31)
+            bit_str = "".join(['0'] * (n_bits - len(f'0b{random_ip:04b}'.split('b')[-1]))) + \
+                      f'0b{random_ip:04b}'.split('b')[-1]
+            for st in merged:
+                if bit_str in st:
+                    continue
+            leafs.add(bit_str)
+
+        for bs in leafs:
+            lpm_rule = Utils.binary_lpm_to_str(bs)
+            policy.append(lpm_rule)
+
         for depth in depth_dict:
             for v_rule in depth_dict[depth]:
                 lpm_rule = Utils.binary_lpm_to_str(v_rule)
                 policy.append(lpm_rule)
         return policy
 
-    @staticmethod
-    def validate_online_optimal_lpm():
-        policy, policy_weight, packet_trace = RunCheck.get_random_policy_and_weight()
-        cache_size = 3
-        dependency_splice = False
-
-        # Utils.draw_tree(offline.policy_tree, {v : v for v in offline.policy_tree.nodes})
-        # plt.show()
-        weights_up_to_i = {}
-        for i in range(len(packet_trace)):
-            offline = HeuristicLPMCache(cache_size, policy, dependency_splice)
-            online = OnlineOptimalLPMCache(cache_size, policy, dependency_splice)
-            weights_up_to_i = {}
-            for packet in packet_trace[:i + 1]:
-                if packet not in online.cache:
-                    weights_up_to_i[packet] = 1 + weights_up_to_i.get(packet, 0)
-                    online.cache_miss(packet)
-            get_offline_cache = offline.get_cache(weights_up_to_i)
-            # print(online.rule_counter == {online.rule_to_vertex[r]:v for r,v in weights_up_to_i.items()})
-            print("Round {0}, Test: {1}".format(i, online.cache == get_offline_cache))
-
-        # get_offline_cache = offline.get_cache(policy_weight)
-        # for packet in packet_trace:
-        #     if packet not in online.cache:
-        #         online.cache_miss(packet)
-        #
-        # print(get_offline_cache == online.cache)
-        # print("s")
-
-    @staticmethod
-    def test_online_tree_cache():
-        with open('Caida/6000rules_small/caida_traceTCP_policy.json', 'r') as f:
-            policy = json.load(f)
-            cache_size = 256
-            OTC = OnlineTreeCache(policy, cache_size)
-            print("s")
 
     @staticmethod
     def random_policy_tree_test():
@@ -263,59 +254,54 @@ class RunCheck:
         plt.show()
 
     @staticmethod
-    def test_random_OptLPM():
-        avg_degree = 5
-        depth = 6
-        cache_size = 5
+    def draw_policy_tree_from_algorithm(optimal_lpm_cache, cache_size, prefix_weight):
+        color_map = []
+        for vtx in optimal_lpm_cache.policy_tree.nodes:
+            color_map.append('lime')
+            # if vtx in optimal_lpm_cache.S[ROOT][1][cache_size]:
+            #     color_map.append('pink')
+            #     continue
+            # if vtx in optimal_lpm_cache.gtc_nodes:
+            #     color_map.append('gray')
+            #     continue
+            # else:
+            #     color_map.append('lime')
 
+        labels = {v: str(v) + "\n" + str(prefix_weight[optimal_lpm_cache.vertex_to_rule[v]])
+                  for idx, v in enumerate(optimal_lpm_cache.policy_tree.nodes)}
+        Utils.draw_tree(optimal_lpm_cache.policy_tree, labels, color_map=color_map)
+        plt.show()
+
+    @staticmethod
+    def test_random_OptLPM():
         avg_degree = 3
-        depth = 8
+        depth = 5
         cache_size = 5
-        policy = RunCheck.get_random_policy_and_weight(depth, avg_degree)
-        zipf_w = np.random.zipf(1.67, len(policy) - 1)
-        prefix_weight = {p: zipf_w[idx] for idx, p in enumerate(policy[1:])}
+        policy = set(RunCheck.get_random_policy_and_weight(depth, avg_degree))
+        zipf_w = np.random.zipf(1.67, len(policy))
+        prefix_weight = {p: zipf_w[idx] for idx, p in enumerate(policy)}
         print("policy = {0}".format(policy))
         print("prefix_weight = {0}".format(prefix_weight))
+        print("len(policy) = {0}".format(len(policy)))
 
         prefix_weight[ROOT_PREFIX] = 0
-        # algorithm = OptimalLPMCache(policy, prefix_weight, cache_size, )
 
-        alg1 = OptimalLPMCache(policy, prefix_weight, cache_size, None, True)
-        alg2 = OptimalLPMCache(policy, prefix_weight, cache_size, None, False)
+        optimal_lpm_cache = OptimalLPMCache(policy, prefix_weight, cache_size)
+        optimized_lpm_cache = OptimizedOptimalLPMCache(policy, prefix_weight, cache_size)
 
-        print("Policy size: {0} avg_degree :{1} depth: {2}".format(len(policy), avg_degree, depth))
-        t0 = time.time()
-        alg2.get_optimal_cache()
-        alg1.get_optimal_cache()
+        optimal_lpm_cache.get_optimal_cache()
+        optimized_lpm_cache.get_optimal_cache()
 
-        elapsed_time = time.time() - t0
-        print(alg1.vtx_S[ROOT][1][4] == alg2.vtx_S[ROOT][1][4])
-        # print("algorithm.vtx_S[ROOT][1][cache_size] : {0}".format(algorithm.vtx_S[ROOT][1][cache_size]))
-        # print(
-        #     "cached rules: {0} gtc nodes: {1}".format(len(algorithm.S[ROOT][1][cache_size]), len(algorithm.gtc_nodes)))
-        # print("Cache size: {0} Total cache entries used: {1}".format(cache_size,
-        #                                                              len(algorithm.S[ROOT][1][cache_size]) + len(
-        #                                                                  algorithm.gtc_nodes)))
-        # print("elapsed_time: {0} sec".format(elapsed_time))
+        for i in range(cache_size + 1):
+            for node in optimal_lpm_cache.vtx_S.keys():
+                if optimal_lpm_cache.vtx_S[node][1].get(i) != optimized_lpm_cache.vtx_S[node][1].get(i):
+                    print("ERROR!!!! node : {0}".format(node))
+                # if optimal_lpm_cache.vtx_S[node][0].get(i) != optimized_lpm_cache.vtx_S[node][0].get(i):
+                #     print("node : {0}".format(node))
 
-        # color_map = []
-        # for vtx in algorithm.policy_tree.nodes:
-        #     # color_map.append('green')
-        #     if vtx in algorithm.S[ROOT][1][cache_size]:
-        #         color_map.append('pink')
-        #         continue
-        #     if vtx in algorithm.gtc_nodes:
-        #         color_map.append('gray')
-        #         continue
-        #     else:
-        #         color_map.append('lime')
-        #
-        # labels = {v: str(v) + "\n" + str(prefix_weight[algorithm.vertex_to_rule[v]])
-        #           for idx, v in enumerate(algorithm.policy_tree.nodes)}
-        #
-        # # nx.draw(algorithm.policy_tree, labels=labels)
-        # Utils.draw_tree(algorithm.policy_tree, labels, color_map=color_map)
-        # plt.show()
+        RunCheck.draw_policy_tree_from_algorithm(optimal_lpm_cache, cache_size, prefix_weight)
+
+
 
 
 class ResultToTable:
@@ -1022,6 +1008,13 @@ def bar_plot_main():
     for hisogram_json, path2save in zip(hisogram_json_array, path2save_arr):
         PlotResultTable.plot_weight_bar(hisogram_json, base + path2save)
 
+def parse_mrt():
+    from mrtparse import Reader
+    path = "../rib.20180205.1800"
+    # with open(path, 'r') as f:
+    for entry in Reader(path):
+        print(entry.data.get('prefix',''))
+        # print(entry.data['prefix'])
 
 def create_heatmap():
     base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/"
@@ -1034,6 +1027,7 @@ def create_heatmap():
 def main():
     RunCheck.test_random_OptLPM()
     # RunCheck.running_example()
+    # parse_mrt()
 
 
 if __name__ == "__main__":

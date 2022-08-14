@@ -6,6 +6,7 @@ import Utils
 from Utils import *
 from TimeSeriesLogger import *
 from Algorithm import *
+from process_results import RunCheck
 
 time_slice = 1.0
 base = ''
@@ -131,25 +132,33 @@ def offline_simulator():
 
     with open(prefix_weight_json_path, 'r') as f:
         prefix_weight = json.load(f)
-    if 'zipf' in prefix_weight_json_path:
-        threshold = 15
-    else:
-        threshold = 0
+
+    threshold = 0 # using filtered prefix2weight
     shorter_prefix_weight = {k: int(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
     shorter_prefix_weight['0.0.0.0/0'] = 0
-    cache_size = 1024
-    print(len(shorter_prefix_weight))
-    t0 = time.time()
-    opt_cache_algorithm = OptimalLPMCache(policy=list(shorter_prefix_weight.keys()),
-                                          prefix_weight=shorter_prefix_weight,
-                                          cache_size=cache_size,
-                                          logfile_path=dir_path + "/log.out")
+    # cache_size = 1024
+    cache_size = 64
 
-    print(time.time() - t0)
+    print(len(shorter_prefix_weight))
+    # optimal_lpm_cache = OptimalLPMCache(policy=list(shorter_prefix_weight.keys()),
+    #                                       prefix_weight=shorter_prefix_weight,
+    #                                       cache_size=cache_size)
+
+    optimized_lpm_cache = OptimizedOptimalLPMCache(policy=list(shorter_prefix_weight.keys()),
+                                          prefix_weight=shorter_prefix_weight,
+                                          cache_size=cache_size)
+
+    # RunCheck.draw_policy_tree_from_algorithm(optimal_lpm_cache, cache_size, prefix_weight)
+
     t0 = time.time()
-    opt_cache_algorithm.get_optimal_cache()
-    print(time.time() - t0)
-    opt_cache_algorithm.to_json(dir_path)
+    optimized_lpm_cache.get_optimal_cache()
+    print("optimized_lpm_cache: {0}".format(time.time() - t0))
+    # t0 = time.time()
+    # optimal_lpm_cache.get_optimal_cache()
+    # print("optimal_lpm_cache: {0}".format(time.time() - t0))
+
+
+    optimized_lpm_cache.to_json(dir_path)
 
 
 def run_OTC():

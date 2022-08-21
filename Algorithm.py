@@ -84,7 +84,6 @@ class HeuristicLPMCache():
 
     def get_cache(self, prefix_weight):
         cache_candidate_depth_dict = self.get_cache_candidate_tree(prefix_weight)
-        print("SUM: {0}".format(sum([len(l) for l in cache_candidate_depth_dict.values()])))
         self.n_goto_nodes = 0
         for depth in sorted(list(cache_candidate_depth_dict.keys()), reverse=True):
             for v in cache_candidate_depth_dict[depth]:
@@ -125,6 +124,8 @@ class HeuristicLPMCache():
             else:
                 self.feasible_set[v] = children_feasible_set
 
+        # print("vertex: {0} \n feasible_set: {1}".format(v, self.feasible_set[v].feasible_iset_weight))
+
     def get_candidate_feasible_set(self, v, prefix_weight, cache_size):
         # optimization for leafs, power of k choices
         leaf_children_of_v = []
@@ -154,10 +155,11 @@ class HeuristicLPMCache():
         v_weight = prefix_weight.get(self.vertex_to_rule[v], 0)
         dependency_spliced_v = FeasibleSet()
         spliced = False
+        log = []
         for i in range(cache_size + 1):
             j_maybe = i + len(
                 set(self.policy_tree.successors(v)) - children_feasible_set.feasible_iset[i])
-            if j_maybe + 1 <= cache_size and not v_in_cache[j_maybe + 1]:
+            if j_maybe + 1 <= cache_size and not v_in_cache[j_maybe + 1] and not v_in_cache[i]:
                 sum_j_maybe = children_feasible_set.feasible_iset_weight[j_maybe + 1]
                 sum_i_and_v = children_feasible_set.feasible_iset_weight[i] + v_weight
                 if sum_j_maybe < sum_i_and_v:
@@ -167,6 +169,7 @@ class HeuristicLPMCache():
 
                     dependency_spliced_v.feasible_iset[j_maybe + 1] = \
                         children_feasible_set.feasible_iset[i].union(set([v]))
+
                     # Adding 'goto' nodes
                     # Without adding the "goto" nodes
                     if ADD_GOTO_NODES:
@@ -373,7 +376,6 @@ class OptimalLPMCache:
                             Y_data[(vtx, r, j_maybe)] = weight_maybe
                             Y_solution[(vtx, r, j_maybe)] = Y_tilde_solution.get((self.deg_out[vtx], r, i),
                                                                                  set()).union(set([vtx]))
-
         # initialize S(x,0,j), S(x,1,j)
         # initializing with 0, weight of empty set
         S0_weight = {0: None}
@@ -398,6 +400,7 @@ class OptimalLPMCache:
                 S1_weight[i] = None
 
         self.vtx_S[vtx] = [S0_weight, S1_weight]
+        # print("vtx: {0} \n S0_weight {1} \n S1_weight {2}".format(vtx, S0_weight, S1_weight))
 
     # -------------------------- OptDTUnion --------------------------
 
@@ -405,7 +408,6 @@ class OptimalLPMCache:
         # (j,r,i) - Optimal weight of T(<=j) with excluding r vertices
         Y_solution = {}
         Y_data = {}
-
         for j in range(1, self.deg_out[vtx] + 1):  # j=1,..,m -> extend solution to include Ty
             for r in range(0, j + 1):  # number of roots to exclude
                 for i in range(0, self.cache_size + 1):  # possible cache size
@@ -422,22 +424,30 @@ class OptimalLPMCache:
         weight_with_S0 = None
         weight_with_S1 = None
         (i_star, r_star, j_star) = (-1, -1, -1)
+
+        latex_S = lambda j, r, i, i_t, s: "Y^{" + str(j - 1) + "," + str(r - 1) + "}_{" + str(
+            i_t) + "} \\cup " + "S^{" + str(j) + "," + str(s) + "}_{" + str(i - i_t) + "}"
+        case_log = []
         for i_t in range(i + 1):
             S0j_imi_t = self.vtx_S[children_array[j - 1]][0].get(i - i_t, 0)  # S0
             S1j_imi_t = self.vtx_S[children_array[j - 1]][1].get(i - i_t, 0)  # S1
             if j == 1:  # initialization
                 if r - 1 >= 0:
                     weight_with_S1 = S1j_imi_t
+                    case_log.append((latex_S(j, r, i, i_t, 1), weight_with_S1))
                 if r < j and S0j_imi_t is not None:
                     weight_with_S0 = S0j_imi_t
+                    case_log.append((latex_S(j, r, i, i_t, 0), weight_with_S0))
             else:  # step
                 Y_data_jm1_rm1 = Y_data.get((j - 1, r - 1, i_t))  # avoid extra get
                 if r - 1 >= 0 and Y_data_jm1_rm1 is not None:
                     weight_with_S1 = Y_data_jm1_rm1 + S1j_imi_t
+                    case_log.append((latex_S(j, r, i, i_t, 1), weight_with_S1))
 
                 Y_data_jm1_r = Y_data.get((j - 1, r, i_t))
                 if r < j and Y_data_jm1_r is not None and S0j_imi_t is not None:
                     weight_with_S0 = Y_data_jm1_r + S0j_imi_t
+                    case_log.append((latex_S(j, r, i, i_t, 0), weight_with_S0))
 
             if weight_with_S1 is None and weight_with_S0 is None:
                 continue
@@ -546,12 +556,6 @@ class OptimizedOptimalLPMCache:
             curr_p = 0.1
             print(progress_bar)
             for idx, vtx in enumerate(self.depth_dict[depth]):
-                #     if time.time() - t0 > 60 * 5:
-                #         profiler.disable()
-                #         stats = pstats.Stats(profiler).sort_stats('tottime')
-                #         stats.dump_stats('main_loop.prof')
-                #         return
-
                 self.apply_on_vtx(vtx)
                 if idx / len(self.depth_dict[depth]) > curr_p:
                     pb_idx = int(10 * curr_p)

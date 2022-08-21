@@ -10,12 +10,12 @@ import os
 
 
 class NodeData:
-    def __init__(self, weight=0, size=0, distance=0, n_successors=0):
+    def __init__(self, weight=0, size=0, distance=0, n_successors=0, v=0):
         self.subtree_weight = weight
         self.subtree_size = size
         self.subtree_depth = distance
         self.n_successors = n_successors
-        self.v = None
+        self.v = v
 
     def unpack(self):
         return self.subtree_size, self.n_successors, self.v
@@ -41,6 +41,7 @@ class NodeData:
                         [data_dict[u].subtree_depth for u in successors[v]])
                 node_data.v = v
                 node_data.n_successors = len(successors[v])
+                node_data.v = v
                 data_dict[v] = node_data
 
         return data_dict, vertex_to_rule

@@ -12,6 +12,7 @@ from Algorithm import *
 import time
 import pandas as df
 import seaborn as sns
+from matplotlib.colors import LogNorm, Normalize
 
 ROOT = 0
 ROOT_PREFIX = '0.0.0.0/0'
@@ -19,54 +20,42 @@ ROOT_PREFIX = '0.0.0.0/0'
 
 class RunCheck:
     @staticmethod
-    def get_random_policy_and_weight(req_depth, avg_degree):
+    def get_random_policy_and_weight(avg_degree, n_nodes):
         curr_depth = 0
         ROOT = ""
         depth_dict = {0: [ROOT]}
-        while curr_depth < req_depth - 2:
+        tree_nodes = ['']
+        base = avg_degree
+        if avg_degree == 1:
+            req_depth = 32
+        else:
+            req_depth = min(32, int(np.ceil(np.log(n_nodes) / np.log(base))))
+
+        n_bits = int((32 / req_depth))
+        n_bits = min(31, n_bits)
+        while curr_depth < req_depth and len(tree_nodes) < n_nodes:
             for v_rule in depth_dict[curr_depth]:
-                n_children = np.random.randint(avg_degree) + 1
+                if len(tree_nodes) == n_nodes:
+                    break
+                n_children = avg_degree
                 for u in range(n_children):
-                    n_bits = int((32 / req_depth))
+                    if len(tree_nodes) == n_nodes:
+                        break
                     random_ip = np.random.randint(0, 2 ** n_bits)
-                    bit_str = "".join(['0'] * (n_bits - len(f'0b{random_ip:04b}'.split('b')[-1]))) + \
-                              f'0b{random_ip:04b}'.split('b')[-1]
+                    bit_str = "".join(['0'] * (n_bits - len(f'0b{random_ip:b}'.split('b')[-1]))) + \
+                              f'0b{random_ip:b}'.split('b')[-1]
                     depth_dict[curr_depth + 1] = [v_rule + bit_str] + depth_dict.get(curr_depth + 1, [])
+                    tree_nodes.append(v_rule + bit_str)
+
             curr_depth += 1
 
-        # n_leafs = 100
-        # for i in range(n_leafs):
-        #     n_bits = int((32 / 3))
-        #     random_ip = np.random.randint(0, 2 ** n_bits)
-        #     policy += random_ip
-        #     bit_str = "".join(['0'] * (n_bits - len(f'0b{random_ip:04b}'.split('b')[-1]))) + \
-        #               f'0b{random_ip:04b}'.split('b')[-1]
-        #     depth_dict[curr_depth + 1] = [v_rule + bit_str] + depth_dict.get(curr_depth + 1, [])
-
         policy = []
-
-        import itertools
-        merged = list(itertools.chain(*list(depth_dict.values())))
-        leafs = set()
-        while len(leafs) < 10:
-            random_ip = np.random.randint(0, 2 ** 31)
-            bit_str = "".join(['0'] * (n_bits - len(f'0b{random_ip:04b}'.split('b')[-1]))) + \
-                      f'0b{random_ip:04b}'.split('b')[-1]
-            for st in merged:
-                if bit_str in st:
-                    continue
-            leafs.add(bit_str)
-
-        for bs in leafs:
-            lpm_rule = Utils.binary_lpm_to_str(bs)
-            policy.append(lpm_rule)
 
         for depth in depth_dict:
             for v_rule in depth_dict[depth]:
                 lpm_rule = Utils.binary_lpm_to_str(v_rule)
                 policy.append(lpm_rule)
         return policy
-
 
     @staticmethod
     def random_policy_tree_test():
@@ -165,31 +154,6 @@ class RunCheck:
 
         X = FeasibleSet.OptDTUnion(feasible_set_array, cache_size)
 
-    def fixed_buggy_random_policy(self):
-        policy = ['0.0.0.0/0', '112.0.0.0/6', '156.0.0.0/6', '159.96.0.0/12', '158.128.0.0/12', '112.112.0.0/12',
-                  '112.124.0.0/18', '158.129.64.0/18', '158.133.0.0/18', '159.103.128.0/18', '159.103.0.0/18']
-        prefix_weight = {'112.0.0.0/6': 1, '156.0.0.0/6': 2, '159.96.0.0/12': 7, '158.128.0.0/12': 1,
-                         '112.112.0.0/12': 1, '112.124.0.0/18': 9083, '158.129.64.0/18': 1, '158.133.0.0/18': 1,
-                         '159.103.128.0/18': 3, '159.103.0.0/18': 1}
-
-        policy = ['0.0.0.0/0', '224.0.0.0/6', '188.0.0.0/6', '188.208.0.0/12', '190.48.0.0/12', '226.160.0.0/12',
-                  '227.16.0.0/12', '224.192.0.0/12', '224.196.64.0/18', '227.24.128.0/18', '227.29.192.0/18',
-                  '226.168.128.0/18', '190.51.128.0/18', '188.220.128.0/18']
-        prefix_weight = {'224.0.0.0/6': 22, '188.0.0.0/6': 2, '188.208.0.0/12': 2, '190.48.0.0/12': 1,
-                         '226.160.0.0/12': 5, '227.16.0.0/12': 1, '224.192.0.0/12': 1, '224.196.64.0/18': 1,
-                         '227.24.128.0/18': 4, '227.29.192.0/18': 1, '226.168.128.0/18': 8, '190.51.128.0/18': 1,
-                         '188.220.128.0/18': 1}
-
-        policy = ['0.0.0.0/0', '228.0.0.0/6', '200.0.0.0/6', '192.0.0.0/6', '193.48.0.0/12', '195.32.0.0/12',
-                  '203.240.0.0/12', '202.224.0.0/12', '228.240.0.0/12', '228.253.0.0/18', '228.249.64.0/18',
-                  '228.241.64.0/18', '202.234.192.0/18', '202.224.0.0/18', '203.246.128.0/18', '203.247.0.0/18',
-                  '203.242.128.0/18', '195.40.128.0/18', '193.57.128.0/18']
-        prefix_weight = {'228.0.0.0/6': 1, '200.0.0.0/6': 15, '192.0.0.0/6': 1, '193.48.0.0/12': 3, '195.32.0.0/12': 1,
-                         '203.240.0.0/12': 14, '202.224.0.0/12': 1, '228.240.0.0/12': 1, '228.253.0.0/18': 7,
-                         '228.249.64.0/18': 1, '228.241.64.0/18': 1, '202.234.192.0/18': 4, '202.224.0.0/18': 1,
-                         '203.246.128.0/18': 1, '203.247.0.0/18': 12, '203.242.128.0/18': 1, '195.40.128.0/18': 2,
-                         '193.57.128.0/18': 1}
-
     @staticmethod
     def running_example():
 
@@ -224,9 +188,9 @@ class RunCheck:
         # print(policy.values())
 
         cache_size = 4
-        algorithm = OptimalLPMCache(policy.keys(),policy, cache_size)
+        algorithm = OptimalLPMCache(policy.keys(), policy, cache_size)
         algorithm.get_optimal_cache()
-        algorithm.to_json('running_example')
+        # algorithm.to_json('running_example')
 
         color_map = []
         for vtx in algorithm.policy_tree.nodes:
@@ -246,7 +210,8 @@ class RunCheck:
         # labels = {v: "{0} \n {1}".format(policy[key], policy[])
         # for idx, v in enumerate(algorithm.policy_tree.nodes)}
 
-        labels = {v: "{0} \n {1}".format(algorithm.vertex_to_rule[v], policy[algorithm.vertex_to_rule[v]]) for v in
+        labels = {v: "{0} \n {1} \n {2}".format(algorithm.vertex_to_rule[v], policy[algorithm.vertex_to_rule[v]], v) for
+                  v in
                   algorithm.policy_tree.nodes}
 
         # nx.draw(algorithm.policy_tree, labels=labels)
@@ -254,21 +219,25 @@ class RunCheck:
         plt.show()
 
     @staticmethod
-    def draw_policy_tree_from_algorithm(optimal_lpm_cache, cache_size, prefix_weight):
+    def draw_policy_tree_from_algorithm(optimal_lpm_cache, cache_size, prefix_weight, rule_names=None):
         color_map = []
         for vtx in optimal_lpm_cache.policy_tree.nodes:
-            color_map.append('lime')
-            # if vtx in optimal_lpm_cache.S[ROOT][1][cache_size]:
-            #     color_map.append('pink')
-            #     continue
-            # if vtx in optimal_lpm_cache.gtc_nodes:
-            #     color_map.append('gray')
-            #     continue
-            # else:
-            #     color_map.append('lime')
-
-        labels = {v: str(v) + "\n" + str(prefix_weight[optimal_lpm_cache.vertex_to_rule[v]])
-                  for idx, v in enumerate(optimal_lpm_cache.policy_tree.nodes)}
+            # color_map.append('lime')
+            if vtx in optimal_lpm_cache.S[ROOT][1][cache_size]:
+                color_map.append('pink')
+                continue
+            if vtx in optimal_lpm_cache.gtc_nodes:
+                color_map.append('gray')
+                continue
+            else:
+                color_map.append('lime')
+        if rule_names:
+            labels = {v: str(rule_names[optimal_lpm_cache.vertex_to_rule[v]]) + '\n' +
+                         str(prefix_weight[optimal_lpm_cache.vertex_to_rule[v]])
+                      for idx, v in enumerate(optimal_lpm_cache.policy_tree.nodes)}
+        else:
+            labels = {v: str(v) + "\n" + str(prefix_weight[optimal_lpm_cache.vertex_to_rule[v]])
+                      for idx, v in enumerate(optimal_lpm_cache.policy_tree.nodes)}
         Utils.draw_tree(optimal_lpm_cache.policy_tree, labels, color_map=color_map)
         plt.show()
 
@@ -301,7 +270,194 @@ class RunCheck:
 
         RunCheck.draw_policy_tree_from_algorithm(optimal_lpm_cache, cache_size, prefix_weight)
 
+    @staticmethod
+    def compare_greedy_opt_solution():
+        avg_degree = 2
+        depth = 6
+        cache_size = 5
+        count = 0
+        cache_opt = -1
+        cache_greedy = -1
+        while cache_opt == cache_greedy:
+            # cache_size = 4
+            #
+            # prefix_weight = {
+            #     '0.0.0.0/0': 0,
+            #     '10.0.0.0/8': 25,
+            #     '10.1.0.0/16': 6,
+            #     '10.1.1.0/24': 3,
+            #     '10.1.1.1/32': 1,
+            #     '10.2.0.0/16': 5,
+            #     '10.2.2.0/24': 4,
+            #     '10.2.2.2/32': 2,  # 1
+            # }
+            #
+            # rule_names = {
+            #     '0.0.0.0/0': "R0",
+            #     '10.0.0.0/8': "R1",
+            #     '10.1.0.0/16': "R2",
+            #     '10.1.1.0/24': "R3",
+            #     '10.1.1.1/32': "R4",
+            #     '10.2.0.0/16': "R5",
+            #     '10.2.2.0/24': "R6",
+            #     '10.2.2.2/32': "R7",
+            # }
+            #
+            # policy = list(prefix_weight.keys())
+            #
+            # policy.append(ROOT_PREFIX)
+            # prefix_weight[ROOT_PREFIX] = 0
 
+            n_nodes = 100
+            degree = 3
+            cache_size = 64
+            zipf_distribution = np.random.zipf(2.0, n_nodes)
+            zipf_distribution = [np.random.randint(3) for i in range(100)]
+
+            node_data_dict, vtx2weight, prefix_weight = SyntheticRho.generate_tree_by_degree(n_nodes, degree,
+                                                                                             sorted(
+                                                                                                 zipf_distribution))
+            rule_names = {rule: "R{0}".format(i) for i, rule in enumerate(prefix_weight.keys())}
+
+            optimal_lpm_cache = OptimalLPMCache(prefix_weight.keys(), prefix_weight, cache_size)
+            greedy_lpm_cache = HeuristicLPMCache(cache_size, prefix_weight.keys())
+            optimal_lpm_cache.get_optimal_cache()
+            cache_opt = optimal_lpm_cache.vtx_S[ROOT][1][cache_size]
+            greedy_cache = greedy_lpm_cache.get_cache(prefix_weight)
+            cache_greedy = sum([prefix_weight.get(u, 0) for u in greedy_cache])
+            print("count: {0}".format(count))
+            count += 1
+            greedy_gtc = list(map(lambda s: greedy_lpm_cache.rule_to_vertex[s.replace('_goto', '')],
+                                  filter(lambda r: 'goto' in r, greedy_cache)))
+            greedy_cache_rule = list(map(lambda s: greedy_lpm_cache.rule_to_vertex[s.replace('_goto', '')],
+                                         filter(lambda r: 'goto' not in r, greedy_cache)))
+
+            print("===============")
+            print(cache_opt)
+            print(cache_greedy)
+            print("===============")
+
+            RunCheck.draw_policy_tree_from_algorithm(optimal_lpm_cache, cache_size, prefix_weight, rule_names)
+
+            color_map = []
+            for vtx in greedy_lpm_cache.policy_tree.nodes:
+                # color_map.append('lime')
+                if vtx in greedy_cache_rule:
+                    color_map.append('pink')
+                    continue
+                if vtx in greedy_gtc:
+                    color_map.append('gray')
+                    continue
+                else:
+                    color_map.append('lime')
+
+            labels = {v: str(rule_names[optimal_lpm_cache.vertex_to_rule[v]]) + '\n' +
+                         str(prefix_weight[optimal_lpm_cache.vertex_to_rule[v]])
+                      for idx, v in enumerate(optimal_lpm_cache.policy_tree.nodes)}
+            Utils.draw_tree(optimal_lpm_cache.policy_tree, labels, color_map=color_map)
+
+            plt.show()
+
+        # print("policy = {0}".format(policy))
+        # print("prefix_weight = {0}".format(prefix_weight))
+        # print("len(policy) = {0}".format(len(policy)))
+
+    @staticmethod
+    def analyze_prefix_weight():
+        with open('traces/caida_traceTCP_prefix_weight.json', 'r') as f:
+            caida_TCP = json.load(f)
+        caida_TCP_node_data_dict, caida_TCP_vertex_to_rule = NodeData.construct_node_data_dict(caida_TCP.keys())
+        caida_TCP_rule_to_vertex = {v: k for k, v in caida_TCP_node_data_dict.items()}
+        sum_total_caida_tcp = sum(caida_TCP.values())
+        caida_tcp_nd_prefix2weight = lambda vtx: caida_TCP[caida_TCP_vertex_to_rule[vtx]] / sum_total_caida_tcp
+
+        with open('traces/caida_traceUDP_prefix_weight.json', 'r') as f:
+            caida_UDP = json.load(f)
+        caida_UDP_node_data_dict, caida_UDP_vertex_to_rule = NodeData.construct_node_data_dict(caida_UDP.keys())
+        caida_UDP_rule_to_vertex = {v: k for k, v in caida_UDP_node_data_dict.items()}
+        sum_total_caida_udp = sum(caida_UDP.values())
+        caida_udp_prefix2weight = lambda vtx: caida_UDP[caida_UDP_vertex_to_rule[vtx]] / sum_total_caida_udp
+
+        with open('traces/prefix2weight_sum60_70sorted_by_node_depth.json', 'r') as f:
+            sorted_prefix2weight = json.load(f)
+        stanford_node_data_dict, stanford_vertex_to_rule = NodeData.construct_node_data_dict(
+            sorted_prefix2weight.keys())
+        standord_rule_to_vertex = {v: k for k, v in stanford_node_data_dict.items()}
+        sum_total_sorted_standford = int(sum(map(int, sorted_prefix2weight.values())))
+        sorted_zipf_prefix2weight = lambda vtx: int(
+            sorted_prefix2weight[stanford_vertex_to_rule[vtx]]) / sum_total_sorted_standford
+
+        with open('traces/zipf_trace_1_0_prefix2weight.json', 'r') as f:
+            random_prefix2weight = json.load(f)
+        standord_rule_to_vertex = {v: k for k, v in stanford_node_data_dict.items()}
+        sum_total_random_standford = int(sum(map(int, sorted_prefix2weight.values())))
+        random_zipf_prefix2weight = lambda vtx: int(
+            random_prefix2weight[stanford_vertex_to_rule[vtx]]) / sum_total_random_standford
+
+        node_data_tuple_array = [(caida_TCP_node_data_dict, caida_tcp_nd_prefix2weight, "TCP"),
+                                 (caida_UDP_node_data_dict, caida_udp_prefix2weight, "UDP"),
+                                 (stanford_node_data_dict, sorted_zipf_prefix2weight, "zipf_by_node_depth"),
+                                 (stanford_node_data_dict, random_zipf_prefix2weight, "zipf_random")
+                                 ]
+
+        no_root_leafs_filter = lambda data_dict: filter(lambda v: v[0] != 0 and v[1].n_successors > 0,
+                                                        data_dict.items())
+        no_root_filter = lambda data_dict: filter(lambda v: v[0] != 0, data_dict.items())
+        avg_feature = lambda data_dict, feature, filter_to_apply: np.average([getattr(nd, feature) for nd in [
+            x[1] for x in list(filter_to_apply(data_dict))]])
+
+        avg_feature_traffic_p = lambda data_dict, feature, prefix2weight, filter_to_apply: np.average(
+            [getattr(nd, feature) * prefix2weight(nd.v) for nd in [x[1] for x in
+                                                                   list(filter_to_apply(data_dict))]])
+
+        avg_feature = lambda data_dict, feature, filter_to_apply: np.average([getattr(nd, feature) for nd in [
+            x[1] for x in list(filter_to_apply(data_dict))]])
+
+        calc_rho = lambda data_dict, prefix2weight, filter_to_apply: sum(
+            [prefix2weight(nd.v) * ((nd.subtree_size + 1) / (1 + nd.n_successors)) for nd in [
+                x[1] for x in list(filter_to_apply(data_dict))]])
+
+        df = pd.DataFrame(columns=["policy",
+                                   "subtree_size",
+                                   "subtree_size*traffic_p",
+                                   "subtree_depth",
+                                   "subtree_depth*traffic_p",
+                                   "n_successors",
+                                   "n_successors*traffic_p",
+                                   "nl_subtree_size",
+                                   "nl_subtree_size*traffic_p",
+                                   "nl_subtree_depth",
+                                   "nl_subtree_depth*traffic_p",
+                                   "nl_n_successors",
+                                   "nl_n_successors*traffic_p",
+                                   "rho"
+                                   ])
+        for data_dict, prefix2weight, policy in node_data_tuple_array:
+            row = {
+                "policy": policy,
+                "subtree_size": avg_feature(data_dict, "subtree_size", no_root_filter),
+                "subtree_size*traffic_p": avg_feature_traffic_p(data_dict, "subtree_size", prefix2weight,
+                                                                no_root_filter),
+                "subtree_depth": avg_feature(data_dict, "subtree_depth", no_root_filter),
+                "subtree_depth*traffic_p": avg_feature_traffic_p(data_dict, "subtree_depth", prefix2weight,
+                                                                 no_root_filter),
+                "n_successors": avg_feature(data_dict, "n_successors", no_root_filter),
+                "n_successors*traffic_p": avg_feature_traffic_p(data_dict, "n_successors", prefix2weight,
+                                                                no_root_filter),
+
+                "nl_subtree_size": avg_feature(data_dict, "subtree_size", no_root_leafs_filter),
+                "nl_subtree_size*traffic_p": avg_feature_traffic_p(data_dict, "subtree_size", prefix2weight,
+                                                                   no_root_leafs_filter),
+                "nl_subtree_depth": avg_feature(data_dict, "subtree_depth", no_root_leafs_filter),
+                "nl_subtree_depth*traffic_p": avg_feature_traffic_p(data_dict, "subtree_depth", prefix2weight,
+                                                                    no_root_leafs_filter),
+                "nl_n_successors": avg_feature(data_dict, "n_successors", no_root_leafs_filter),
+                "nl_n_successors*traffic_p": avg_feature_traffic_p(data_dict, "n_successors", prefix2weight,
+                                                                   no_root_leafs_filter),
+                "rho": calc_rho(data_dict, prefix2weight, no_root_leafs_filter)
+            }
+            df = df.append(row, ignore_index=True)
+        df.to_csv("policy_features.csv")
 
 
 class ResultToTable:
@@ -384,15 +540,51 @@ class ResultToTable:
         print(path + '/' + path.split('/')[-1] + '.csv')
         df.to_csv(path + '/' + path.split('/')[-1] + '.csv')
 
+    @staticmethod
+    def join_all_results(greedy_local_csv, opt_csv_path):
+        res_df = pd.read_csv(greedy_local_csv)
+        true_df = res_df[(res_df['Splice'] == True)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
+        false_df = res_df[(res_df['Splice'] == False)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
+        cache_size_array = list(false_df['Cache Size'])
+        df_opt_raw = pd.read_csv(opt_csv_path)
+        df_opt = df_opt_raw[(df_opt_raw['Cache Size'].isin(cache_size_array))]
+
+        df = pd.DataFrame(columns=["Cache Size", "OptLocal", "GreedySplice", "OptSplice"])
+        print("s")
+
+        for cache_size in cache_size_array:
+            row = {
+                "Cache Size": cache_size,
+                "OptLocal": float(false_df[(false_df['Cache Size'] == cache_size)]["Hit Rate"]),
+                "GreedySplice": float(true_df[(true_df['Cache Size'] == cache_size)]["Hit Rate"]),
+                "OptSplice": float(df_opt[(df_opt['Cache Size'] == cache_size)]["Hit Rate"]),
+                "GreedySplice - OptLocal": float(true_df[(true_df['Cache Size'] == cache_size)]["Hit Rate"]) - float(
+                    false_df[(false_df['Cache Size'] == cache_size)]["Hit Rate"]),
+                "OptSplice - GreedySplice": float(df_opt[(df_opt['Cache Size'] == cache_size)]["Hit Rate"]) - float(
+                    true_df[(true_df['Cache Size'] == cache_size)]["Hit Rate"]),
+                "OptSplice - OptLocal": float(df_opt[(df_opt['Cache Size'] == cache_size)]["Hit Rate"]) - float(
+                    false_df[(false_df['Cache Size'] == cache_size)]["Hit Rate"])
+            }
+
+            df = df.append(row, ignore_index=True)
+
+        path = "/".join(opt_csv_path.split('/')[:-1]) + "/result_summary.csv"
+        print(path)
+        df.to_csv(path)
+
 
 class PlotResultTable:
     @staticmethod
-    def plot_true_false_df(true_df, false_df, path_to_save, ylim=[0, 80]):
+    def plot_true_false_opt_df(true_df, false_df, opt_df, path_to_save, ylim=[0, 100]):
         fig, ax = plt.subplots()
         ax.plot(list(map(str, true_df['Cache Size'])), list(map(lambda v: 100 - v, true_df['Hit Rate'])), marker="s",
-                markersize=14, label="OptSplice'")
+                markersize=14, label="GreedySplice")
         ax.plot(list(map(str, false_df['Cache Size'])), list(map(lambda v: 100 - v, false_df['Hit Rate'])), marker="o",
                 markersize=14, label="OptLocal")
+        ax.plot(list(map(lambda x: str(int(x)), opt_df['Cache Size'])),
+                list(map(lambda v: 100 - v, opt_df['Hit Rate'])), marker="P",
+                markersize=14, label="OptSplice")
+
         xy_label_font_size = 28
         ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
         ax.set_yticks([0, 20, 40, 60, 80, 100])
@@ -401,7 +593,7 @@ class PlotResultTable:
         ax.set_ylabel('Cache Miss (%)', fontsize=xy_label_font_size)
         ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
         ax.set_ylim(ylim)
-        ax.legend(prop=dict(size=24))
+        ax.legend(prop=dict(size=16))
         ax.grid(True)
 
         fig.tight_layout()
@@ -411,8 +603,8 @@ class PlotResultTable:
         fig.savefig(path_to_save, dpi=300)
 
     @staticmethod
-    def plot_range_result_table(csv_path):
-        df = pd.read_csv(csv_path)
+    def plot_range_result_table(greedy_local_csv_path, opt_csv_path):
+        df = pd.read_csv(greedy_local_csv_path)
         cache_size_array = sorted(list(df['Cache Size'].drop_duplicates()))
         for index, row in df[['Bottom', 'Top']].drop_duplicates().iterrows():
             top = row['Top']
@@ -422,18 +614,23 @@ class PlotResultTable:
             true_df = res_df[(res_df['Splice'] == True)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
             false_df = res_df[(res_df['Splice'] == False)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
 
-        PlotResultTable.plot_true_false_df(true_df, false_df, csv_path.replace('csv', 'jpg'))
+        df_opt = pd.read_csv(opt_csv_path)
+
+        PlotResultTable.plot_true_false_df(true_df, false_df, greedy_local_csv_path.replace('csv', 'jpg'))
 
         print("s")
 
     @staticmethod
-    def plot_special_sort_result_table(csv_path):
+    def plot_special_sort_result_table(csv_path, opt_csv_path):
         df = pd.read_csv(csv_path)
 
         true_df = df[(df['Splice'] == True)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
         false_df = df[(df['Splice'] == False)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
+        cache_size_array = list(false_df['Cache Size'])
+        df_opt_raw = pd.read_csv(opt_csv_path)
+        df_opt = df_opt_raw[(df_opt_raw['Cache Size'].isin(cache_size_array))]
 
-        PlotResultTable.plot_true_false_df(true_df, false_df, csv_path.replace('csv', 'jpg'))
+        PlotResultTable.plot_true_false_opt_df(true_df, false_df, df_opt, csv_path.replace('csv', 'jpg'))
 
     @staticmethod
     def calculate_and_save_bar_data(policy_json_path, prefix2weight_json_path, height2weight_histogram_json_path):
@@ -460,8 +657,7 @@ class PlotResultTable:
             json.dump(average_tree_size_for_depth, f)
 
     @staticmethod
-    def plot_bar(x_data, y_data, path_to_save):
-
+    def plot_bar(x_data, y_data, path_to_save, y_label, x_label):
         fig, ax = plt.subplots()
         ax.bar(x_data, y_data)
         xy_label_font_size = 25
@@ -469,11 +665,11 @@ class PlotResultTable:
         # ax.set_yticks([1, 2, 3, 4, 5])
         ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
 
-        ax.set_ylabel('Average subtree size', fontsize=xy_label_font_size)
-        ax.set_xlabel("Height", fontsize=xy_label_font_size)
-        ax.set_yscale('log', basey=2)
+        ax.set_ylabel(y_label, fontsize=xy_label_font_size)
+        ax.set_xlabel(x_label, fontsize=xy_label_font_size)
+        # ax.set_yscale('yscale', basey=2)
 
-        ax.set_ylim([1, 300])
+        # ax.set_ylim([1, 300])
         # ax.legend(prop=dict(size=24))
         ax.grid(True)
 
@@ -531,43 +727,41 @@ class PlotResultTable:
         PlotResultTable.plot_bar(x_data, y_data, path_to_save_fig)
 
     @staticmethod
-    def plot_heatmap(policy_json, prefix_weight_json, path_to_save):
-        with open(policy_json, 'r') as f:
-            policy = json.load(f)
+    def plot_heatmap(prefix_weight_json, path_to_save=None):
+        with open(prefix_weight_json, 'r') as f:
+            prefix_weight = json.load(f)
+        prefix_weight = {k: int(v) for k, v in prefix_weight.items()}
+        policy = list(prefix_weight.keys())
         node_data_dict, vertex_to_rule = NodeData.construct_node_data_dict(policy)
         rule_to_vertex = {v: k for k, v in vertex_to_rule.items()}
 
-        with open(prefix_weight_json, 'r') as f:
-            prefix_weight = json.load(f)
-
+        bin_idx = 0
+        log2_y = [0.5, 0.75, 1]
         node_height = {v: node_data_dict[v].subtree_depth for v in node_data_dict}
-        bin = 0
-        # log2_y = [0.45, 0.9, 1]
-        # log2_y = np.linspace(0,1,4)
-        # log2_y = [0.5, 0.75, 0.85, 1]
-        # log2_y = [0.5, 0.75,. ]
-        # z = [1, 0.5, 0.25, 0.125]
-        # log2_y = [0.5, 0.75, 0.875, 0.9375]
-        log2_y = [0.001, 1]  # 0.75, 0.875, 0.9375]#, 0.96875, 0.984375, 0.9921875]
-        log2_y = []
-        # log2_y = [1-(1/2)**i for i in range(8)]
         sum_total = sum(prefix_weight.values())
-
-        n_rows = len(log2_y)
-        n_cols = len(set(node_height.values()))
-        heatmap_data = np.zeros((n_rows, n_cols))
+        heatmap_data = {}
+        traffic_p = 0
         for prefix, weight in sorted(prefix_weight.items(), key=lambda key: key[1]):
             height = node_height.get(rule_to_vertex[prefix], 0)
-            traffic_p = weight / sum_total
-            while traffic_p > log2_y[bin]:
-                bin += 1
+            traffic_p += weight / sum_total
+            traffic_p = min(traffic_p, 1)
+            while traffic_p > log2_y[bin_idx]:
+                bin_idx += 1
             # found rule with weight in bin
-            heatmap_data[bin][height - 1] += 1
+            heatmap_data[(log2_y[bin_idx], height)] = 1 + heatmap_data.get((log2_y[bin_idx], height), 0)
+        p_heatmap_data = {k: 100 * v / len(prefix_weight) for k, v in heatmap_data.items()}
+        n_rows = len(log2_y)
+        n_cols = len(set(node_height.values()))
+        heatmap_array = np.zeros((n_rows, n_cols))
+        for (row, col), val in p_heatmap_data.items():  # heatmap_data.items()
+            heatmap_array[log2_y.index(row), col - 1] += val
 
-        np.save(path_to_save, heatmap_data)
-        # heatmap_data = np.load(path_to_save)
+        if path_to_save:
+            np.save(path_to_save, heatmap_array)
 
-        ax = sns.heatmap(heatmap_data)
+        # heatmap_array = np.load(path_to_save + '.npy')
+
+        ax = sns.heatmap(heatmap_array, norm=LogNorm(), vmin=1)
         xy_label_font_size = 10
         ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
         # ax.set_yticks(list(map(lambda v : str(v), log2_y)))
@@ -583,376 +777,237 @@ class PlotResultTable:
 
         plt.show()
 
-        # fig.tight_layout()
-        # print(path_to_save)
-        # h = 4
-        # fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
-        # fig.savefig(path_to_save, dpi=300)
-
-
-class MakeRunScript:
-    @staticmethod
-    def make_run_script_range():
-        arr = ["zipf_trace_10_50_packet_array.json",
-               "zipf_trace_10_50_prefix2weight.json",
-               "zipf_trace_1_0_packet_array.json",
-               "zipf_trace_1_0_prefix2weight.json",
-               "zipf_trace_20_50_packet_array.json",
-               "zipf_trace_20_50_prefix2weight.json",
-               "zipf_trace_2_50_packet_array.json",
-               "zipf_trace_2_50_prefix2weight.json",
-               "zipf_trace_30_50_packet_array.json",
-               "zipf_trace_30_50_prefix2weight.json",
-               "zipf_trace_40_50_packet_array.json",
-               "zipf_trace_40_50_prefix2weight.json"]
-
-        trace_prefix_array = ['zipf_trace_10_50',
-                              'zipf_trace_1_0',
-                              'zipf_trace_20_50',
-                              'zipf_trace_2_50',
-                              'zipf_trace_30_50',
-                              'zipf_trace_40_50']
-
-        suffix = ['_prefix2weight.json, _packet_array.json']
-        opt_array = ["True", "False"]
-        cache_size_array = [64, 128, 256, 512]
-
-        base_path = "run_sc/"
-        count = 0
-        cmd_array = []
-        for trace_prefix in trace_prefix_array:
-            for opt in opt_array:
-                for cache_size in cache_size_array:
-                    if count % 6 == 0:
-                        if len(cmd_array) > 0:
-                            with open(base_path + "run_sc{0}.sh".format(int(count / 6) - 1), 'w') as f:
-                                f.writelines(sorted(cmd_array, key=lambda cmd: int(cmd.split(" ")[4])))
-                            cmd_array = []
-                    cmd = "python ../simulator_main.py ../traces/{0}_prefix2weight.json ../traces/{0}_packet_array.json {1} {2} > offline_{0}_{1}_{2}.out\n".format(
-                        trace_prefix, cache_size, opt)
-                    cmd_array.append(cmd)
-                    count += 1
-
-        with open(base_path + "run_sc{0}.sh".format(int(count / 6) - 1), 'w') as f:
-            f.writelines(sorted(cmd_array, key=lambda cmd: int(cmd.split(" ")[4])))
-
-        print(" =================== ")
-        for i in range(int(count / 6)):
-            print("chmod +x run_sc{0}.sh".format(i))
-
-    @staticmethod
-    def create_caida_offline_run():
-        """
-        policy = sys.argv[1]
-        packet_trace_json_path = sys.argv[2]
-        cache_size = int(sys.argv[3])
-        dependency_splice = eval(sys.argv[4])
-        """
-
-        base = "/home/user46/OptimalLPMCaching/Caida/6000rules/"
-        base = "/home/user46/OptimalLPMCaching/Caida/caida_final/"
-        arr = [("caida_traceTCP_prefix_weight.json", "caida_traceTCP_packet_array.json"),
-               ("caida_traceUDP_prefix_weight.json", "caida_traceUDP_packet_array.json")
-               ]
-        opt_array = ["True", "False"]
-        cache_size_array = [64, 128, 256, 512, 1024]
-        cmd_array = []
-        for pfx_weight, packet_trace in arr:
-            for opt in opt_array:
-                for cache_size in cache_size_array:
-                    exp_name = "_".join(packet_trace.split('_')[-3:-2])
-                    cmd = "python ../simulator_main.py {5}{0} {5}{1} {2} {3} > {5}result/caida_{4}_{2}_{3}.out \n".format(
-                        pfx_weight, packet_trace, cache_size, opt, exp_name, base)
-                    cmd_array.append(cmd)
-
-        sorted_by_processing_time = sorted(cmd_array, key=lambda cmd: int(cmd.split(" ")[4]))
-        n_files = 5
-        array_to_file = [[] for i in range(n_files)]
-        i = 0
-        while sorted_by_processing_time:
-            print("i % n_files : {0}".format(i % n_files))
-            print("len(array_to_file[i % n_files]) : {0}".format(len(array_to_file[i % n_files])))
-            cmd = sorted_by_processing_time.pop(0)
-            array_to_file[i % n_files].append(cmd)
-            print("len(array_to_file[i % n_files]) : {0}".format(len(array_to_file[i % n_files])))
-            i += 1
-
-        for i in range(n_files):
-            with open('run_sc/run_sc_C{0}.sh'.format(i), 'w') as f:
-                f.writelines(array_to_file[i])
-
-        print(" =================== ")
-        for i in range(n_files):
-            print("chmod +x run_sc_C{0}.sh".format(i))
-
-        print(" =================== ")
-        for i in range(n_files):
-            print("nohup ./run_sc_C{0}.sh > run_sc_C{0}.out &".format(i))
-
-    @staticmethod
-    def make_run_script_special_sort():
-        arr = ["zipf_weight_30M_sum60_70sorted_by_subtree_size_dvd_n_children.json_packet_array.json",
-               "zipf_weight_30M_sum60_70sorted_by_subtree_size_dvd_n_children.json_prefix2weight.json",
-               "zipf_weight_30M_sum60_70_sorted_by_subtree_size.json_packet_array.json",
-               "zipf_weight_30M_sum60_70_sorted_by_subtree_size.json_prefix2weight.json",
-               "zipf_weight_30M_sum60_90sorted_by_subtree_size_dvd_n_children.json_packet_array.json",
-               "zipf_weight_30M_sum60_90sorted_by_subtree_size_dvd_n_children.json_prefix2weight.json",
-               "zipf_weight_30M_sum60_90_sorted_by_subtree_size.json_packet_array.json",
-               "zipf_weight_30M_sum60_90_sorted_by_subtree_size.json_prefix2weight.json"]
-
-        format_packet_array_name = lambda p: ('_'.join(p.split('_')[-2:]) + '_' + "_".join(p.split('_')[3:-2])).replace(
-            '.json', '') + '.json'
-        format_prefix2weight = lambda p: (p.split('_')[-1] + "_" + "_".join(p.split('_')[3:-1])).replace('.json',
-                                                                                                         '') + '.json'
-
-        for n in arr:
-            if 'prefix2weight' in n:
-                dst_name = format_prefix2weight(n)
-            else:
-                dst_name = format_packet_array_name(n)
-            print("mv {0} {1}".format(n, dst_name))
-
-        file_name_array = ['sum60_70_sorted_by_subtree_size.json',
-                           'sum60_70sorted_by_subtree_size_dvd_n_children.json',
-                           'sum60_90_sorted_by_subtree_size.json',
-                           'sum60_90sorted_by_subtree_size_dvd_n_children.json']
-        packet_array_prefix = "packet_array_"
-        pfx2weight_prefix = "prefix2weight_"
-
-        cache_size_array = [64, 128, 256, 512]
-        opt_array = [True, False]
-        cmd_array = []
-        for file_name in file_name_array:
-            for opt in opt_array:
-                for cache_size in cache_size_array:
-                    cmd = "python ../simulator_main.py ../traces/prefix2weight_{0} ../traces/packet_array_{0} {1} {2} > offline_{1}_{2}_{3}.out\n".format(
-                        file_name, cache_size, opt, file_name.replace('.json', ''))
-                    cmd_array.append(cmd)
-                    print(cmd)
-
-        sorted_by_processing_time = sorted(cmd_array, key=lambda cmd: int(cmd.split(" ")[4]))
-        n_files = 8
-        array_to_file = [[] for i in range(n_files)]
-        i = 0
-        while sorted_by_processing_time:
-            print("i % n_files : {0}".format(i % n_files))
-            print("len(array_to_file[i % n_files]) : {0}".format(len(array_to_file[i % n_files])))
-            cmd = sorted_by_processing_time.pop(0)
-            array_to_file[i % n_files].append(cmd)
-            print("len(array_to_file[i % n_files]) : {0}".format(len(array_to_file[i % n_files])))
-            i += 1
-
-        for i in range(n_files):
-            with open('run_sc/run_sc_X{0}.sh'.format(i), 'w') as f:
-                f.writelines(array_to_file[i])
-
-        print(" =================== ")
-        for i in range(n_files):
-            print("chmod +x run_sc_X{0}.sh".format(i))
-
-        print(" =================== ")
-        for i in range(n_files):
-            print("nohup ./run_sc_X{0}.sh > run_sc_X{0}.out &".format(i))
-
         print("s")
 
-    @staticmethod
-    def construct_cmd_array_OTC(trace_name_array, base, out_file_to_cmd, policy_json_path):
-        cmd_array = []
-        simulator_main = '/home/user46/OptimalLPMCaching/simulator_main.py'
-        result_dir = '/home/user46/OptimalLPMCaching/OTC_result/'
-        cache_size_array = [64, 128, 256, 512]
-        for trace_name in trace_name_array:
-            for cache_size in cache_size_array:
-                out_file = result_dir + trace_name.replace('packet_array', '').replace('.json', '') + '{0}_{1}'.format(
-                    trace_name.split('.')[-1], cache_size) + '.out'
-                # args: policy_json_path packet_trace_json_path cache_size
-                cmd = 'python ' + simulator_main + " {1} {0}{2} {3} > {4}\n".format(base,
-                                                                                    policy_json_path,
-                                                                                    trace_name,
-                                                                                    cache_size,
-                                                                                    out_file)
-                out_file_to_cmd[out_file] = cmd
-                cmd_array.append(cmd)
-        return cmd_array
+        # calculate % traffic per each subtree heught
 
     @staticmethod
-    def construct_cmd_array_online_experiment(trace_name_array, base, out_file_to_cmd, policy_json_path):
-        cmd_array = []
-        simulator_main = '/home/user46/OptimalLPMCaching/simulator_main.py'
-        result_dir = '/home/user46/OptimalLPMCaching/OptLPM_online/'
-        cache_size_array = [64, 128, 256, 512]
-        epoch_array = [1.0]  # , 0.5, 1.0]
-        opt_array = [True, False]
-        for trace_name in trace_name_array:
-            for cache_size in cache_size_array:
-                for epoch in epoch_array:
-                    for opt in opt_array:
-                        # policy = sys.argv[1]
-                        # packet_trace_json_path = sys.argv[2]
-                        # cache_size = int(sys.argv[3])
-                        # dependency_splice = eval(sys.argv[4])
-                        # epoch = int(sys.argv[5])
-                        out_file = (result_dir + trace_name + '_{0}_{1}_{2}'.format(cache_size, opt, epoch)).replace(
-                            '.json', '') + '.out'
-                        # args: policy_json_path packet_trace_json_path cache_size
-                        cmd = 'python ' + simulator_main + " {1} {0}{2} {3} {4} {5} > {6}\n".format(base,
-                                                                                                    policy_json_path,
-                                                                                                    trace_name,
-                                                                                                    cache_size,
-                                                                                                    opt,
-                                                                                                    epoch,
-                                                                                                    out_file)
-                        out_file_to_cmd[out_file] = cmd
-                        cmd_array.append(cmd)
-        return cmd_array
+    def plot_result_summary_diff(result_summary_csv):
+        df = pd.read_csv(result_summary_csv)
+        fig, ax = plt.subplots()
+        # ax.plot(list(map(lambda x: str(int(x)), df['Cache Size'])), df["OptSplice - OptLocal"], marker="s",
+        #         markersize=14, label="OptSplice - OptLocal")
+        # ax.plot(list(map(lambda x: str(int(x)), df['Cache Size'])), df["GreedySplice - OptLocal"], marker="o",
+        #         markersize=14, label="GreedySplice - OptLocal")
+        ax.plot(list(map(lambda x: str(int(x)), df['Cache Size'])), df["OptSplice - GreedySplice"], marker="P",
+                markersize=14, label="OptSplice - GreedySplice")
+
+        xy_label_font_size = 28
+        ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax.set_yticks([0, 20, 40, 60, 80, 100])
+        ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
+
+        ax.set_ylabel('Cache Hit Diff (%)', fontsize=xy_label_font_size)
+        ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
+        # ax.set_ylim(ylim)
+        ax.legend(prop=dict(size=16))
+        ax.grid(True)
+
+        fig.tight_layout()
+        path_to_save = result_summary_csv.replace('result_summary.csv',
+                                                  result_summary_csv.split('/')[-2] + 'greedy_vs_opt.png')
+        print(path_to_save)
+        h = 4
+        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+        fig.savefig(path_to_save, dpi=300)
+
+
+class SyntheticRho:
+    @staticmethod
+    def tmp(y_data):
+        fig, ax = plt.subplots()
+        # data_x, data_y = zip(*sorted(list(child_histogram.items()), key=lambda x: x[0]))
+        ax.plot(list(range(len(y_data))), y_data, label="Count")
+
+        # ax.set_yscale('log')
+        # ax.set_xscale('log')
+        # ax.set_xlabel("# Children")
+        # ax.set_ylabel("# Node Count")
+        # ax.set_title("Number Of Children Per Node \n Log Bin")
+        plt.show()
 
     @staticmethod
-    def cmd_array_to_run_files(n_files, cmd_array, lambda_key_sort):
-        sorted_by_processing_time = sorted(cmd_array, key=lambda_key_sort)
-        array_to_file = [[] for i in range(n_files)]
-        i = 0
-        while sorted_by_processing_time:
-            # print("i % n_files : {0}".format(i % n_files))
-            # print("len(array_to_file[i % n_files]) : {0}".format(len(array_to_file[i % n_files])))
-            cmd = sorted_by_processing_time.pop(0)
-            array_to_file[i % n_files].append(cmd)
-            # print("len(array_to_file[i % n_files]) : {0}".format(len(array_to_file[i % n_files])))
-            i += 1
+    def generate_policy(n_nodes, zipf_distribution):
+        dataset_sorted = []
+        dataset_reversed = []
+        dataset_random = []
+        for degree in [1, 2, 4, 8, 16, 32]:
+            node_data_dict, vtx2weight, prefix2weight = SyntheticRho.generate_tree_by_degree(n_nodes, degree,
+                                                                                             sorted(
+                                                                                                 zipf_distribution))
+            dataset_sorted.append((node_data_dict, vtx2weight, prefix2weight, degree))
+            # node_data_dict, vtx2weight, prefix2weight
+            node_data_dict, vtx2weight, prefix2weight = SyntheticRho.generate_tree_by_degree(n_nodes, degree,
+                                                                                             sorted(
+                                                                                                 zipf_distribution,
+                                                                                                 reverse=True))
+            dataset_reversed.append((node_data_dict, vtx2weight, prefix2weight, degree))
 
-        for i in range(n_files):
-            with open('run_sc/run_sc_X{0}.sh'.format(i), 'w') as f:
-                f.writelines(array_to_file[i])
+            node_data_dict, vtx2weight, prefix2weight = SyntheticRho.generate_tree_by_degree(n_nodes, degree,
+                                                                                             zipf_distribution)
+            dataset_random.append((node_data_dict, vtx2weight, prefix2weight, degree))
 
-        print(" =================== ")
-        for i in range(n_files):
-            print("chmod +x run_sc_X{0}.sh".format(i))
-
-        print(" =================== ")
-        for i in range(n_files):
-            print("nohup ./run_sc_X{0}.sh > run_sc_X{0}.out &".format(i))
+        return dataset_sorted, dataset_reversed, dataset_random
 
     @staticmethod
-    def make_run_sc():
-        out_file_to_cmd = {}
-        cmd_array = []
-        construct_cmd_array = MakeRunScript.construct_cmd_array_online_experiment
-        cmd_to_cache_size = lambda cmd_str: (float(cmd_str.split(' ')[-3]), int(cmd_str.split(' ')[-5]))
+    def compute_algorithm_results(cache_size, dataset):
+        df = pd.DataFrame(columns=["Cache Size", "opt_splice_result",
+                                   "greedy_splice_result", "opt_local_result", "rho"])
+        for node_data_dict, vtx2weight, prefix_weight, degree in dataset:
+            opt_splice = OptimizedOptimalLPMCache(prefix_weight.keys(), prefix_weight, cache_size)
+            # opt_splice = OptimalLPMCache(prefix_weight.keys(), prefix_weight, cache_size_array[-1])
+            opt_splice.get_optimal_cache()
+            greedy_splice = HeuristicLPMCache(cache_size, prefix_weight.keys(), dependency_splice=True)
+            greedy_splice.get_cache(prefix_weight)
+            opt_local = HeuristicLPMCache(cache_size, prefix_weight.keys(), dependency_splice=False)
+            opt_local.get_cache(prefix_weight)
 
-        # construct_cmd_array = MakeRunScript.construct_cmd_array_OTC
-        # cmd_to_cache_size = lambda cmd_str: int(cmd_str.split(' ')[-3])
+            sum_total = sum(prefix_weight.values())
+            to_hit_rate = lambda val: val * 100 / sum_total
 
-        policy_json_path = "/home/user46/OptimalLPMCaching/Zipf/prefix_only.json"
+            for i in range(cache_size + 1):
+                opt_splice_result = opt_splice.vtx_S[ROOT][1][i]
+                greedy_splice_result = greedy_splice.feasible_set[ROOT].feasible_iset_weight[i]
+                opt_local_result = opt_local.feasible_set[ROOT].feasible_iset_weight[i]
+                row = {"Cache Size": i,
+                       "opt_splice_result": to_hit_rate(opt_splice_result),
+                       "greedy_splice_result": to_hit_rate(greedy_splice_result),
+                       "opt_local_result": to_hit_rate(opt_local_result),
+                       "degree": degree,
+                       "rho": SyntheticRho.calc_rho(node_data_dict, vtx2weight)
+                       }
+                df = df.append(row, ignore_index=True)
+        return df
 
-        base = "/home/user46/OptimalLPMCaching/traces/sum60_90/"
-        trace_name_array = ["zipf_trace_10_50_packet_array.json",
-                            "zipf_trace_1_0_packet_array.json",
-                            "zipf_trace_20_50_packet_array.json",
-                            "zipf_trace_2_50_packet_array.json",
-                            "zipf_trace_30_50_packet_array.json",
-                            "zipf_trace_40_50_packet_array.json"]
-        cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+    @staticmethod
+    def generate_different_rho_policies(base_dir):
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
+            print(base_dir)
+        n_nodes = 6000
+        cache_size = 1024
+        a = 2.25 # first 60 are 70% of the traffic
+        sum_60_70 = -1
+        while np.around(sum_60_70, 2) != 0.70:
+            zipf_distribution = np.random.zipf(a, n_nodes)
+            sum_60_70 = sum(sorted(zipf_distribution)[:-60]) / sum(zipf_distribution)
 
-        policy_json_path = "caida_traceUDP_policy.json"
-        base = "/home/user46/OptimalLPMCaching/Caida/6000rules/"
-        trace_name_array = ["caida_traceUDP_packet_array.json"]
-        cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, base + policy_json_path)
+        with open(base_dir + '/zipf_distribution.json', 'w') as f:
+            json.dump(list(map(int, zipf_distribution)), f)
 
-        policy_json_path = "caida_traceTCP_policy.json"
-        base = "/home/user46/OptimalLPMCaching/Caida/6000rules/"
-        trace_name_array = ["caida_traceTCP_packet_array.json"]
-        cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, base + policy_json_path)
+        dataset_sorted_descending_depth, dataset_sorted_ascending_depth, \
+        dataset_random = SyntheticRho.generate_policy(n_nodes, zipf_distribution)
+        df = SyntheticRho.compute_algorithm_results(cache_size, dataset_sorted_descending_depth)
+        df.to_csv(base_dir + '/dataset_sorted_descending_depth.csv')
+        df = SyntheticRho.compute_algorithm_results(cache_size, dataset_random)
+        df.to_csv(base_dir + '/dataset_random.csv')
+        df = SyntheticRho.compute_algorithm_results(cache_size, dataset_sorted_ascending_depth)
+        df.to_csv(base_dir + '/dataset_sorted_ascending_depth.csv')
 
-        # policy_json_path = "/home/user46/OptimalLPMCaching/Zipf/prefix_only.json"
-        # base = "/home/user46/OptimalLPMCaching/traces/sum60_70/"
-        # trace_name_array = ["zipf_trace_10_50_packet_array.json"
-        #                     "zipf_trace_1_0_packet_array.json",
-        #                     "zipf_trace_20_50_packet_array.json",
-        #                     "zipf_trace_2_50_packet_array.json",
-        #                     "zipf_trace_30_50_packet_array.json",
-        #                     "zipf_trace_40_50_packet_array.json"]
-        # cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+    @staticmethod
+    def generate_tree_by_degree(n_nodes, degree, zipf_distribution):
+        policy = set()
+        break_loop = 0
+        while len(policy) < n_nodes:
+            policy_addition = RunCheck.get_random_policy_and_weight(degree, n_nodes - len(set(policy)))
+            RunCheck.get_random_policy_and_weight(degree, n_nodes - len(set(policy)))
+            policy = policy.union(set(policy_addition))
+            if n_nodes - len(set(policy)) <= degree:
+                break  # can't generate more random subtrees
+            break_loop += 1
+            if break_loop > 100:
+                break
 
-        # base = "/home/user46/OptimalLPMCaching/traces/special_sort/"
-        # trace_name_array = ["packet_array_sum60_70sorted_by_node_depth.json",
-        #                     "packet_array_sum60_70sorted_by_subtree_size_dvd_n_children.json",
-        #                     "packet_array_sum60_70_sorted_by_subtree_size.json",
-        #                     "packet_array_sum60_90sorted_by_node_depth.json",
-        #                     "packet_array_sum60_90sorted_by_subtree_size_dvd_n_children.json",
-        #                     "packet_array_sum60_90_sorted_by_subtree_size.json"]
-        # cmd_array += construct_cmd_array(trace_name_array, base, out_file_to_cmd, policy_json_path)
+        while len(set(policy)) < n_nodes:  # add leaves to complete to n_nodes
+            n_bits = 31
+            random_ip = np.random.randint(0, 2 ** n_bits)
+            bit_str = "".join(['0'] * (n_bits - len(f'0b{random_ip:b}'.split('b')[-1]))) + \
+                      f'0b{random_ip:b}'.split('b')[-1]
+            policy.add(Utils.binary_lpm_to_str(bit_str))
+        # policy_tree, rule_to_vertex, successors = HeuristicLPMCache.process_policy(policy)
+        policy = set(policy)
+        node_data_dict, vertex_to_rule = NodeData.construct_node_data_dict(policy)
+        prefix2weight = {v: w for v, w in zip(sorted(policy, key=lambda p: int(p.split('/')[-1])), zipf_distribution)}
+        prefix2weight[ROOT_PREFIX] = 0
+        rule_to_vertex = {v: k for k, v in vertex_to_rule.items()}
+        vtx2weight = {rule_to_vertex[p]: w for p, w in prefix2weight.items()}
 
-        print(len(cmd_array))
-        print(cmd_array[0])
-        MakeRunScript.cmd_array_to_run_files(5, cmd_array, lambda_key_sort=cmd_to_cache_size)
+        return node_data_dict, vtx2weight, prefix2weight
+
+    @staticmethod
+    def calc_rho(data_dict, vertex2weight):
+
+        no_root_filter = lambda data_dict: filter(lambda v: v[0] != 0,
+                                                  data_dict.items())
+        sum_total = sum(vertex2weight.values())
+        return sum([(vertex2weight[v] / sum_total) * ((nd.subtree_size + 1) / (1 + nd.n_successors)) for v, nd in
+                    list(no_root_filter(data_dict))])
+
+    @staticmethod
+    def plot_csv_rho(csv_path, path_to_save, cache_size=None):
+        df = pd.read_csv(csv_path)
+        if not cache_size:
+            cache_size = max(df['Cache Size'])
+        df = df[(df['Cache Size'] == cache_size)]
+
+        df = df.sort_values(by=['degree'], ascending=[False])
 
 
-def place_holder():
-    pass
-    # PlotResultTable.plot_range_result_table("Figures/2707_results/offline_sum60_90/offline_sum60_90_result.csv")
 
-    # format_result_into_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/special_sort/sum60_70_sorted_by_subtree_size")
-    # format_result_into_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/special_sort/sum60_90_sorted_by_subtree_size")
-    # format_result_into_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/special_sort/sum60_70sorted_by_subtree_size_dvd_n_children")
-    # format_result_into_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/special_sort/sum60_90sorted_by_subtree_size_dvd_n_children")
+        fig, ax1 = plt.subplots()
+        ax2 = ax1.twinx()
 
-    # plot_special_sort_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/special_sort/sum60_70_sorted_by_subtree_size/sum60_70_sorted_by_subtree_size.csv")
-    # plot_special_sort_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/special_sort/sum60_90_sorted_by_subtree_size/sum60_90_sorted_by_subtree_size.csv")
-    # plot_special_sort_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/special_sort/sum60_70sorted_by_subtree_size_dvd_n_children/sum60_70sorted_by_subtree_size_dvd_n_children.csv")
-    # plot_special_sort_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/special_sort/sum60_90sorted_by_subtree_size_dvd_n_children/sum60_90sorted_by_subtree_size_dvd_n_children.csv")
+        hit_to_miss = lambda ser: list(map(lambda v: 100 - v, ser))
+        x_data = list(map(lambda v: str(int(v)), df['degree']))
+        ax1.plot(x_data, hit_to_miss(df['greedy_splice_result']), label="GreedySplice", marker="s")
+        ax1.plot(x_data, hit_to_miss(df['opt_local_result']), label="OptLocal", marker="o")
+        ax1.plot(x_data, hit_to_miss(df['opt_splice_result']), label="OptSplice", marker="P")
+        ax2.plot(x_data, df['rho'], label="Rho", marker="d", color='red')
 
-    # MakeRunScript.make_run_script_special_sort()
+        xy_label_font_size = 28
+        ax1.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax2.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax1.yaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax2.yaxis.set_tick_params(labelsize=xy_label_font_size)
 
-    # make_run_script()
+        ax1.set_xlabel("degree", fontsize=xy_label_font_size)
+        ax1.set_ylabel("Cache Miss (%)", fontsize=xy_label_font_size)
+        ax2.set_ylabel(r'$\rho$', fontsize=xy_label_font_size)
 
-    # create_caida_offline_run()
+        lines_1, labels_1 = ax1.get_legend_handles_labels()
+        lines_2, labels_2 = ax2.get_legend_handles_labels()
+        lines = lines_1 + lines_2
+        labels = labels_1 + labels_2
 
-    # format_result_into_table("/home/itamar/PycharmProjects/OptimalLPMCaching/Caida/6000rules/result")
-    # plot_special_sort_result_table(
-    #     "/home/itamar/PycharmProjects/OptimalLPMCaching/Caida/6000rules/result/result_dir/result_udp.csv")
+        ax1.legend(prop=dict(size=16))
+        ax1.legend(lines, labels, loc=0)
+        ax1.grid(True)
+        fig.tight_layout()
 
-    # format_result_into_table("/home/itamar/PycharmProjects/OptimalLPMCaching/Caida/caida_final/result/UDP")
-    # plot_special_sort_result_table(
-    # "/home/itamar/PycharmProjects/OptimalLPMCaching/Caida/6000rules/result/result_dir/result_udp.csv")
+        print(path_to_save)
+        h = 4
+        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+        fig.savefig(path_to_save, dpi=300)
 
-    # for X in ["sorted_by_subtree_size_dvd_n_children", "sorted_by_subtree_size", "sorted_by_depth"]:
-    #     for Y in [70, 90]:
-    #         ResultToTable.format_special_sort(
-    #             "/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/{0}/sum60_{1}".format(X, Y))
-    #         PlotResultTable.plot_special_sort_result_table(
-    #             "/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/{0}/sum60_{1}/sum60_{1}.csv".format(X, Y))
 
-    # PlotResultTable.plot_caida_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/6000rules/result_dir/result_tcp.csv")
-    # PlotResultTable.plot_caida_result_table("/home/itamar/PycharmProjects/OptimalLPMCaching/run_sc/6000rules/result_dir/result_udp.csv")
-    # RunCheck.validate_online_optimal_lpm()
-    # MakeRunScript.make_run_sc()
+"""
+        xy_label_font_size = 28
+        ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax.set_yticks([0, 20, 40, 60, 80, 100])
+        ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
 
-    # ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/sorted_by_depth/sum60_70')
+        ax.set_ylabel('Cache Miss (%)', fontsize=xy_label_font_size)
+        ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
+        ax.set_ylim(ylim)
+        ax.legend(prop=dict(size=16))
+        ax.grid(True)
 
-    # ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/UDP')
-    # ResultToTable.format_result_into_table('C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/result/TCP')
-    # bar_plot_main() # plot_weight_bar
 
-    """
 
-    base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/"
-    policy = base + "bar_weight_data/caida_traceUDP_policy.json"
-    json_path = base + 'subtree_size/caida_traceUDP.json'
-    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
-    PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
+"""
 
-    policy = base + "bar_weight_data/caida_traceTCP_policy.json"
-    json_path = base + 'subtree_size/caida_traceTCP.json'
-    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
-    PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
 
-    # policy = base + "bar_weight_data/prefix_only.json"
-    # json_path = base + 'subtree_size/stanford_backbone.json'
-    # PlotResultTable.calculate_and_save_bin_bar_data_subtree_size(policy, json_path)
-    # PlotResultTable.plot_subtree_bar(json_path, json_path.replace('json', 'jpg'))
-    """
 
-    cache_miss_main()
 
 
 def cache_miss_main():
@@ -1008,13 +1063,15 @@ def bar_plot_main():
     for hisogram_json, path2save in zip(hisogram_json_array, path2save_arr):
         PlotResultTable.plot_weight_bar(hisogram_json, base + path2save)
 
+
 def parse_mrt():
     from mrtparse import Reader
     path = "../rib.20180205.1800"
     # with open(path, 'r') as f:
     for entry in Reader(path):
-        print(entry.data.get('prefix',''))
+        print(entry.data.get('prefix', ''))
         # print(entry.data['prefix'])
+
 
 def create_heatmap():
     base = "C:/Users/Hadar Matlaw/Desktop/Itamar/OptimalLPMCaching/last_min_additions/"
@@ -1025,9 +1082,12 @@ def create_heatmap():
 
 
 def main():
-    RunCheck.test_random_OptLPM()
+    # RunCheck.test_random_OptLPM()
     # RunCheck.running_example()
     # parse_mrt()
+    # RunCheck.compare_greedy_opt_solution()
+    SyntheticRho.generate_different_rho_policies('result/rho')
+    # SyntheticRho.plot_csv_rho('result/rho/dataset_random.csv')
 
 
 if __name__ == "__main__":

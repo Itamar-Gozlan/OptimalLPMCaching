@@ -136,8 +136,8 @@ def offline_simulator():
     threshold = 0 # using filtered prefix2weight
     shorter_prefix_weight = {k: int(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
     shorter_prefix_weight['0.0.0.0/0'] = 0
-    # cache_size = 1024
-    cache_size = 64
+    cache_size = 1024
+    # cache_size = 64
 
     print(len(shorter_prefix_weight))
     # optimal_lpm_cache = OptimalLPMCache(policy=list(shorter_prefix_weight.keys()),

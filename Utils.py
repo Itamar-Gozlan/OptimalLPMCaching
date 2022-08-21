@@ -175,12 +175,6 @@ def draw_policy_trie(T, labels, figname, x_shift=0, y_shift=0):
     #                     list(filter(lambda s: 'goto' in str(s), vertex_to_rule[0].cache_items[cache_size]))]
     color_map = []
     for node in T:
-        # if node in final_goto_nodes:
-        #     color_map.append('yellow')
-        #     continue
-        # if node in vertex_to_rule[0].cache_items[cache_size]:
-        #     color_map.append('orange')
-        #     continue
         if node in final_nodes:
             color_map.append('pink')
             continue

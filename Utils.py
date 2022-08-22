@@ -192,15 +192,17 @@ def draw_policy_trie(T, labels, figname, x_shift=0, y_shift=0):
     plt.clf()
 
 
-def draw_tree(T, labels, x_shift=0, y_shift=0, color_map=None):
+def draw_tree(T, labels=None, x_shift=0, y_shift=0, color_map=None):
     pos = graphviz_layout(T, prog="dot")
     if x_shift != 0 or y_shift != 0:
         label_pos = nudge(pos, x_shift, y_shift)
         nx.draw(T, pos, node_color=color_map)
         nx.draw_networkx_labels(T, pos=label_pos, labels=labels)
     else:
-        nx.draw(T, pos, node_color=color_map, with_labels=True, labels=labels)
-
+        if labels:
+            nx.draw(T, pos, node_color=color_map, with_labels=True, labels=labels)
+        else:
+            nx.draw(T, pos)
 
 def get_cache_candidate_tree(prefix_weight_path):
     with open(prefix_weight_path, 'r') as f:

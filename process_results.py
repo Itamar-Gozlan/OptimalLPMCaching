@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import sys
 
@@ -16,6 +17,10 @@ from matplotlib.colors import LogNorm, Normalize
 
 ROOT = 0
 ROOT_PREFIX = '0.0.0.0/0'
+
+
+def hit_to_miss(ser):
+    return list(map(lambda v: 100 - v, ser))
 
 
 class RunCheck:
@@ -814,24 +819,56 @@ class PlotResultTable:
 
 class SyntheticRho:
     @staticmethod
-    def tmp(y_data):
-        fig, ax = plt.subplots()
-        # data_x, data_y = zip(*sorted(list(child_histogram.items()), key=lambda x: x[0]))
-        ax.plot(list(range(len(y_data))), y_data, label="Count")
+    def generate_binary_strings(bit_count):
+        binary_strings = []
 
-        # ax.set_yscale('log')
-        # ax.set_xscale('log')
-        # ax.set_xlabel("# Children")
-        # ax.set_ylabel("# Node Count")
-        # ax.set_title("Number Of Children Per Node \n Log Bin")
-        plt.show()
+        def genbin(n, bs=''):
+            if len(bs) == n:
+                binary_strings.append(bs)
+            else:
+                genbin(n, bs + '0')
+                genbin(n, bs + '1')
+
+        genbin(bit_count)
+        return binary_strings
+
+    @staticmethod
+    def construct_d_regular_tree(n_nodes, d, zipf_distribution):
+        T = nx.balanced_tree(d, int(math.ceil(math.log(n_nodes, d))), create_using=nx.DiGraph)  # r**h nodes
+        nodes_to_bin_string = {0: ""}
+        bit_count = np.ceil(math.log(d, 2))
+        bin_string_array = SyntheticRho.generate_binary_strings(bit_count)
+
+        prefix2weight = {}
+        queue = [ROOT]
+        z_idx = 0
+        while bool(queue):
+            v = queue.pop(0)
+            for idx, u in enumerate(T.neighbors(v)):
+                nodes_to_bin_string[u] = nodes_to_bin_string[v] + bin_string_array[idx]
+                prefix2weight[Utils.binary_lpm_to_str(nodes_to_bin_string[u])] = zipf_distribution[z_idx]
+                z_idx += 1
+                queue.append(u)
+                if len(nodes_to_bin_string) == n_nodes:
+                    queue = []
+                    break
+
+        prefix2weight['0.0.0.0/0'] = 0
+        policy = prefix2weight.keys()
+        node_data_dict, vertex_to_rule = NodeData.construct_node_data_dict(policy)
+        rule_to_vertex = {v: k for k, v in vertex_to_rule.items()}
+        vtx2weight = {rule_to_vertex[p]: w for p, w in prefix2weight.items()}
+
+        return node_data_dict, vtx2weight, prefix2weight
+
+        return prefix2weight
 
     @staticmethod
     def generate_policy(n_nodes, zipf_distribution):
         dataset_sorted = []
         dataset_reversed = []
         dataset_random = []
-        for degree in [1, 2, 4, 8, 16, 32]:
+        for degree in [2, 4, 8, 16, 32]:
             node_data_dict, vtx2weight, prefix2weight = SyntheticRho.generate_tree_by_degree(n_nodes, degree,
                                                                                              sorted(
                                                                                                  zipf_distribution))
@@ -852,7 +889,7 @@ class SyntheticRho:
     @staticmethod
     def compute_algorithm_results(cache_size, dataset):
         df = pd.DataFrame(columns=["Cache Size", "opt_splice_result",
-                                   "greedy_splice_result", "opt_local_result", "rho"])
+                                   "greedy_splice_result", "opt_local_result", "degree", "rho", "new_rho"])
         for node_data_dict, vtx2weight, prefix_weight, degree in dataset:
             opt_splice = OptimizedOptimalLPMCache(prefix_weight.keys(), prefix_weight, cache_size)
             # opt_splice = OptimalLPMCache(prefix_weight.keys(), prefix_weight, cache_size_array[-1])
@@ -874,19 +911,15 @@ class SyntheticRho:
                        "greedy_splice_result": to_hit_rate(greedy_splice_result),
                        "opt_local_result": to_hit_rate(opt_local_result),
                        "degree": degree,
-                       "rho": SyntheticRho.calc_rho(node_data_dict, vtx2weight)
+                       'rho': SyntheticRho.calc_rho(node_data_dict, vtx2weight),
+                       "new_rho": SyntheticRho.calc_new_rho(node_data_dict, vtx2weight)
                        }
                 df = df.append(row, ignore_index=True)
         return df
 
     @staticmethod
-    def generate_different_rho_policies(base_dir):
-        if not os.path.exists(base_dir):
-            os.makedirs(base_dir)
-            print(base_dir)
-        n_nodes = 6000
-        cache_size = 1024
-        a = 2.25 # first 60 are 70% of the traffic
+    def create_zipf(n_nodes, base_dir):
+        a = 2.25  # first 60 are 70% of the traffic
         sum_60_70 = -1
         while np.around(sum_60_70, 2) != 0.70:
             zipf_distribution = np.random.zipf(a, n_nodes)
@@ -894,6 +927,17 @@ class SyntheticRho:
 
         with open(base_dir + '/zipf_distribution.json', 'w') as f:
             json.dump(list(map(int, zipf_distribution)), f)
+
+    @staticmethod
+    def generate_rho_experiment(base_dir):
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
+            print(base_dir)
+        n_nodes = 6001
+        cache_size = 1024
+
+        with open(base_dir + '/zipf_distribution.json', 'r') as f:
+            zipf_distribution = list(map(int, json.load(f)))
 
         dataset_sorted_descending_depth, dataset_sorted_ascending_depth, \
         dataset_random = SyntheticRho.generate_policy(n_nodes, zipf_distribution)
@@ -940,11 +984,24 @@ class SyntheticRho:
         no_root_filter = lambda data_dict: filter(lambda v: v[0] != 0,
                                                   data_dict.items())
         sum_total = sum(vertex2weight.values())
-        return sum([(vertex2weight[v] / sum_total) * ((nd.subtree_size + 1) / (1 + nd.n_successors)) for v, nd in
-                    list(no_root_filter(data_dict))])
+        old_rho = sum([(vertex2weight[v] / sum_total) * ((nd.subtree_size + 1) / (1 + nd.n_successors)) for v, nd in
+                       list(no_root_filter(data_dict))])
+        return old_rho
 
     @staticmethod
-    def plot_csv_rho(csv_path, path_to_save, cache_size=None):
+    def calc_new_rho(data_dict, vertex2weight):
+        no_root_filter = lambda data_dict: filter(lambda v: v[0] != 0,
+                                                  data_dict.items())
+        sum_total = sum(vertex2weight.values())
+
+        new_rho = sum([(vertex2weight[v] / sum_total) * (nd.subtree_size + 1) for v, nd in
+                       list(no_root_filter(data_dict))]) / sum(
+            [(vertex2weight[v] / sum_total) * (nd.n_successors + 1) for v, nd in
+             list(no_root_filter(data_dict))])
+        return new_rho
+
+    @staticmethod
+    def plot_csv_rho(csv_path, cache_size=None):
         df = pd.read_csv(csv_path)
         if not cache_size:
             cache_size = max(df['Cache Size'])
@@ -952,17 +1009,14 @@ class SyntheticRho:
 
         df = df.sort_values(by=['degree'], ascending=[False])
 
-
-
         fig, ax1 = plt.subplots()
         ax2 = ax1.twinx()
 
-        hit_to_miss = lambda ser: list(map(lambda v: 100 - v, ser))
         x_data = list(map(lambda v: str(int(v)), df['degree']))
-        ax1.plot(x_data, hit_to_miss(df['greedy_splice_result']), label="GreedySplice", marker="s")
+        # ax1.plot(x_data, hit_to_miss(df['greedy_splice_result']), label="GreedySplice", marker="s")
         ax1.plot(x_data, hit_to_miss(df['opt_local_result']), label="OptLocal", marker="o")
         ax1.plot(x_data, hit_to_miss(df['opt_splice_result']), label="OptSplice", marker="P")
-        ax2.plot(x_data, df['rho'], label="Rho", marker="d", color='red')
+        ax2.plot(x_data, df['new_rho'], label=r'$\rho$', marker="d", color='red')
 
         xy_label_font_size = 28
         ax1.xaxis.set_tick_params(labelsize=xy_label_font_size)
@@ -974,40 +1028,164 @@ class SyntheticRho:
         ax1.set_ylabel("Cache Miss (%)", fontsize=xy_label_font_size)
         ax2.set_ylabel(r'$\rho$', fontsize=xy_label_font_size)
 
+        ax2.set_ylim([0, 105])
+        ax1.set_ylim([0, 100])
+
         lines_1, labels_1 = ax1.get_legend_handles_labels()
         lines_2, labels_2 = ax2.get_legend_handles_labels()
         lines = lines_1 + lines_2
         labels = labels_1 + labels_2
 
-        ax1.legend(prop=dict(size=16))
-        ax1.legend(lines, labels, loc=0)
+        ax1.legend(lines, labels, prop=dict(size=12))
         ax1.grid(True)
         fig.tight_layout()
 
+        # plt.show()
+
+        path_to_save = 'result/Figures/new_rho/' + csv_path.split('/')[-1].replace('.csv',
+                                                                                   '_{0}.png'.format(cache_size))
         print(path_to_save)
         h = 4
         fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
         fig.savefig(path_to_save, dpi=300)
 
+    @staticmethod
+    def plot_csv_rho_diff(csv_path, cache_size=None):
+        df = pd.read_csv(csv_path)
+        if not cache_size:
+            cache_size = max(df['Cache Size'])
+        df = df[(df['Cache Size'] == cache_size)]
 
-"""
+        df = df.sort_values(by=['degree'], ascending=[False])
+
+        fig, ax1 = plt.subplots()
+        ax2 = ax1.twinx()
+
+        x_data = list(map(lambda v: str(int(v)), df['degree']))
+        ax1.plot(x_data, df['opt_splice_result'] - df['opt_local_result'], label="OptSplice - OptLocal", marker="o")
+        ax2.plot(x_data, df['rho'], label="Rho", marker="d", color='red')
+
         xy_label_font_size = 28
-        ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
-        ax.set_yticks([0, 20, 40, 60, 80, 100])
+        ax1.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax2.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax1.yaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax2.yaxis.set_tick_params(labelsize=xy_label_font_size)
+
+        ax1.set_xlabel("degree", fontsize=xy_label_font_size)
+        ax1.set_ylabel("Cache Miss Diff (%)", fontsize=xy_label_font_size)
+        ax2.set_ylabel(r'$\rho$', fontsize=xy_label_font_size)
+
+        ax2.set_ylim([1, 110])
+        ax1.set_ylim([0, 30])
+        ax2.set_yscale('log')
+        lines_1, labels_1 = ax1.get_legend_handles_labels()
+        lines_2, labels_2 = ax2.get_legend_handles_labels()
+        lines = lines_1 + lines_2
+        labels = labels_1 + labels_2
+
+        ax1.legend(lines, labels, loc="lower right", prop=dict(size=16))
+        ax1.grid(True)
+        fig.tight_layout()
+
+        # plt.show()
+        path_to_save = csv_path.replace('.csv', '_diff_{0}.png'.format(cache_size))
+        print(path_to_save)
+        h = 4
+        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+        fig.savefig(path_to_save, dpi=300)
+
+    @staticmethod
+    def calculate_rho_for_weight_distribution(json_path):
+        with open(json_path, 'r') as f:
+            prefix2weight = json.load(f)
+
+        node_data_dict, vertex_to_rule = NodeData.construct_node_data_dict(prefix2weight.keys())
+        rule_to_vertex = {v: k for k, v in vertex_to_rule.items()}
+        vtx2weight = {rule_to_vertex[p]: int(w) for p, w in prefix2weight.items()}
+        return SyntheticRho.calc_rho(node_data_dict, vtx2weight)
+
+    @staticmethod
+    def plot_real_traces_rho():
+        data = {
+            "Stanford\nRandom": SyntheticRho.calculate_rho_for_weight_distribution(
+                'traces/zipf_trace_1_0_prefix2weight.json'),
+            "Standford\nby height": SyntheticRho.calculate_rho_for_weight_distribution(
+                'traces/prefix2weight_sum60_70sorted_by_node_depth.json'),
+            "Caida\nA": SyntheticRho.calculate_rho_for_weight_distribution('traces/caida_traceTCP_prefix_weight.json'),
+            "Caida\nB": SyntheticRho.calculate_rho_for_weight_distribution('traces/caida_traceUDP_prefix_weight.json')}
+
+        data = {k: np.around(v, 2) for k, v in sorted(data.items(), key=lambda val: val[1])}
+
+        fig, ax = plt.subplots()
+        ax.plot(list(data.keys()), list(data.values()), marker="d", color="red", markersize=14)
+
+        xy_label_font_size = 28
+        ax.xaxis.set_tick_params(labelsize=20)
         ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
 
-        ax.set_ylabel('Cache Miss (%)', fontsize=xy_label_font_size)
-        ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
-        ax.set_ylim(ylim)
+        ax.set_ylabel(r'$\rho$', fontsize=xy_label_font_size)
+        # ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
         ax.legend(prop=dict(size=16))
         ax.grid(True)
 
+        # plt.show()
+        path_to_save = 'result/Figures/new_rho/rho_real_traces.png'
+        fig.tight_layout()
+        print(path_to_save)
+        h = 4
+        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+        fig.savefig(path_to_save, dpi=300)
 
+    @staticmethod
+    def plot_by_rho(csv_dir):
+        df = pd.DataFrame()
+        for csv_file in filter(lambda d: 'csv' in d, os.listdir(csv_dir)):
+            print(csv_file)
+            curr_df = pd.read_csv(csv_dir + csv_file)
+            curr_df['type'] = [csv_file.split('.')[0]] * curr_df.shape[0]
+            df = pd.concat([df, curr_df])
 
-"""
+        """
+                ax.plot(list(map(str, true_df['Cache Size'])), list(map(lambda v: 100 - v, true_df['Hit Rate'])), marker="s",
+                markersize=14, label="GreedySplice")
+        ax.plot(list(map(str, false_df['Cache Size'])), list(map(lambda v: 100 - v, false_df['Hit Rate'])), marker="o",
+                markersize=14, label="OptLocal")
+        ax.plot(list(map(lambda x: str(int(x)), opt_df['Cache Size'])),
+                list(map(lambda v: 100 - v, opt_df['Hit Rate'])), marker="P",
+                markersize=14, label="OptLocal")
+        """
 
+        df = df[(df['Cache Size'] == 1024)].sort_values(['new_rho'], ascending=[True])
+        df['rho_int'] = list(map(int, df['new_rho']))
+        df = df.drop_duplicates(subset=['rho_int'])
+        df = df[(df['Cache Size'] == 1024)].sort_values(['new_rho'], ascending=[True])
+        fig, ax = plt.subplots()
+        ax.plot(df['new_rho'], hit_to_miss(df['opt_local_result']), marker="o", markersize=14, label="OptLocal")
+        ax.plot(df['new_rho'], hit_to_miss(df['opt_splice_result']), marker="P", markersize=14, label="OptSplice")
+        # y_data = [(100 - x - (100 -y)) for x,y in zip(df['opt_local_result'], df['opt_splice_result'])]
+        # ax.plot(df['new_rho'], y_data,
+        #         marker="o", markersize=14, label="OptLocal-OptSplice")
 
+        xy_label_font_size = 28
+        ax.xaxis.set_tick_params(labelsize=20)
+        ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
 
+        ax.set_xlabel(r'$\rho$', fontsize=xy_label_font_size)
+        ax.set_ylabel('Cache Miss (%)', fontsize=xy_label_font_size)
+        # ax.set_ylabel('Cache Miss Diff (%)', fontsize=xy_label_font_size)
+
+        ax.set_xscale('log', basex=2)
+        # ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
+        ax.legend(prop=dict(size=16))
+        ax.grid(True)
+
+        path_to_save = 'result/Figures/new_rho/xaxis_rho_cache_miss.png'
+
+        fig.tight_layout()
+        print(path_to_save)
+        h = 4
+        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+        fig.savefig(path_to_save, dpi=300)
 
 
 def cache_miss_main():
@@ -1086,8 +1264,7 @@ def main():
     # RunCheck.running_example()
     # parse_mrt()
     # RunCheck.compare_greedy_opt_solution()
-    SyntheticRho.generate_different_rho_policies('result/rho')
-    # SyntheticRho.plot_csv_rho('result/rho/dataset_random.csv')
+    SyntheticRho.generate_rho_experiment('result/rho')
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ tmp*
 *.txt
 *.out
 *.jpg
+*.png
 *.prof
 Figures/
 Caida/

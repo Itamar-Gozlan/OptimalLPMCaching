@@ -14,6 +14,10 @@ import time
 import pandas as df
 import seaborn as sns
 from matplotlib.colors import LogNorm, Normalize
+from matplotlib.markers import MarkerStyle
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib as mpl
+import seaborn as sns
 
 ROOT = 0
 ROOT_PREFIX = '0.0.0.0/0'
@@ -864,32 +868,43 @@ class SyntheticRho:
         return prefix2weight
 
     @staticmethod
-    def generate_policy(n_nodes, zipf_distribution, percentage):
-        dataset_sorted = []
-        dataset_reversed = []
-        dataset_random = []
+    def generate_policy(n_nodes, zipf_distribution, p):
+        dataset = []
+
+        large_q = int(len(zipf_distribution) * (p / 100))
+        head = zipf_distribution[:large_q]
+        rest = zipf_distribution[large_q:]
+        np.random.shuffle(head)
+        np.random.shuffle(rest)
+
+        zipf_distribution = head + rest
+        path_to_save = "result/rho/sorted_zipf/zipf_distribution_{0}.json".format(p)
+
+        directory = "result/rho/sorted_zipf/"
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        with open(path_to_save, 'w') as f:
+            json.dump(list(map(str, zipf_distribution)), f)
+
         for degree in [2, 4, 8, 16, 32]:
             node_data_dict, vtx2weight, prefix2weight = SyntheticRho.construct_d_regular_tree(n_nodes, degree,
-                                                                                              sorted(
-                                                                                                  zipf_distribution))
-            dataset_sorted.append((node_data_dict, vtx2weight, prefix2weight, degree))
-            # node_data_dict, vtx2weight, prefix2weight
-            node_data_dict, vtx2weight, prefix2weight = SyntheticRho.construct_d_regular_tree(n_nodes, degree,
-                                                                                              sorted(
-                                                                                                  zipf_distribution,
-                                                                                                  reverse=True))
-            dataset_reversed.append((node_data_dict, vtx2weight, prefix2weight, degree))
-
-            node_data_dict, vtx2weight, prefix2weight = SyntheticRho.construct_d_regular_tree(n_nodes, degree,
                                                                                               zipf_distribution)
-            dataset_random.append((node_data_dict, vtx2weight, prefix2weight, degree))
+            dataset.append((node_data_dict, vtx2weight, prefix2weight, degree))
 
-        return dataset_sorted, dataset_reversed, dataset_random
+        return dataset
 
     @staticmethod
-    def compute_algorithm_results(cache_size, dataset):
-        df = pd.DataFrame(columns=["Cache Size", "opt_splice_result",
-                                   "greedy_splice_result", "opt_local_result", "degree", "rho", "new_rho"])
+    def compute_algorithm_results(cache_size, dataset, p):
+        df = pd.DataFrame(columns=["Cache Size",
+                                   "opt_splice_result",
+                                   "greedy_splice_result",
+                                   "opt_local_result",
+                                   "degree",
+                                   "p",
+                                   "rho_numerator",
+                                   "rho_denominator",
+                                   "rho"])
         for node_data_dict, vtx2weight, prefix_weight, degree in dataset:
             opt_splice = OptimizedOptimalLPMCache(prefix_weight.keys(), prefix_weight, cache_size)
             # opt_splice = OptimalLPMCache(prefix_weight.keys(), prefix_weight, cache_size_array[-1])
@@ -906,77 +921,59 @@ class SyntheticRho:
                 opt_splice_result = opt_splice.vtx_S[ROOT][1][i]
                 greedy_splice_result = greedy_splice.feasible_set[ROOT].feasible_iset_weight[i]
                 opt_local_result = opt_local.feasible_set[ROOT].feasible_iset_weight[i]
+                rho_numerator, rho_denominator, rho = SyntheticRho.calc_rho(node_data_dict, vtx2weight)
                 row = {"Cache Size": i,
                        "opt_splice_result": to_hit_rate(opt_splice_result),
                        "greedy_splice_result": to_hit_rate(greedy_splice_result),
                        "opt_local_result": to_hit_rate(opt_local_result),
                        "degree": degree,
-                       'rho': SyntheticRho.calc_rho(node_data_dict, vtx2weight),
-                       "new_rho": SyntheticRho.calc_new_rho(node_data_dict, vtx2weight)
+                       "p": p,
+                       "rho_numerator": rho_numerator,
+                       "rho_denominator": rho_denominator,
+                       "rho": rho
                        }
                 df = df.append(row, ignore_index=True)
         return df
 
     @staticmethod
-    def create_zipf(n_nodes, base_dir):
+    def create_zipf(n_nodes, path_to_save):
         a = 1.7  # first 60 are 70% of the traffic
         sum_60_70 = -1
         while np.around(sum_60_70, 2) != 0.70:
             zipf_distribution = np.random.zipf(a, n_nodes)
             sum_60_70 = sum(sorted(zipf_distribution, reverse=True)[:60]) / sum(zipf_distribution)
             print(sum_60_70)
-
-        with open(base_dir + '/zipf_distribution_sum60_70.json', 'w') as f:
+        zipf_distribution = sorted(zipf_distribution, reverse=True)
+        with open(path_to_save, 'w') as f:
             json.dump(list(map(int, zipf_distribution)), f)
+        return zipf_distribution
 
     @staticmethod
     def generate_rho_experiment(base_dir):
         if not os.path.exists(base_dir):
             os.makedirs(base_dir)
             print(base_dir)
+
+        # with open(base_dir + '/zipf_distribution_sum60_70.json', 'r') as f:
+        #     zipf_distribution = list(map(int, json.load(f)))
+
         n_nodes = 6001
         cache_size = 1024
 
-        with open(base_dir + '/zipf_distribution_sum60_70.json', 'r') as f:
-            zipf_distribution = list(map(int, json.load(f)))
-
-        dataset_sorted_descending_depth, dataset_sorted_ascending_depth, \
-        dataset_random = SyntheticRho.generate_policy(n_nodes, zipf_distribution)
-        val = int(sys.argv[1])
-        if val == 0:
-            df = SyntheticRho.compute_algorithm_results(cache_size, dataset_sorted_descending_depth)
-            df.to_csv(base_dir + '/dataset_sorted_descending_depth.csv')
-        if val == 1:
-            df = SyntheticRho.compute_algorithm_results(cache_size, dataset_random)
-            df.to_csv(base_dir + '/dataset_random.csv')
-        if val == 2:
-            df = SyntheticRho.compute_algorithm_results(cache_size, dataset_sorted_ascending_depth)
-            df.to_csv(base_dir + '/dataset_sorted_ascending_depth.csv')
-
-    @staticmethod
-    def generate_rho_experiment_percentage(base_dir):
-        if not os.path.exists(base_dir):
-            os.makedirs(base_dir)
-            print(base_dir)
-        n_nodes = 6001
-        cache_size = 1024
-
-        with open(base_dir + '/zipf_distribution_sum60_70.json', 'r') as f:
-            zipf_distribution = list(map(int, json.load(f)))
-
-        p = val = int(sys.argv[2])
-        dataset_sorted_descending_depth, dataset_sorted_ascending_depth, \
-        dataset_random = SyntheticRho.generate_policy(n_nodes, zipf_distribution, p)
-        val = int(sys.argv[1])
-        if val == 0:
-            df = SyntheticRho.compute_algorithm_results(cache_size, dataset_sorted_descending_depth)
-            df.to_csv(base_dir + '/dataset_sorted_descending_depth.csv')
-        if val == 1:
-            df = SyntheticRho.compute_algorithm_results(cache_size, dataset_random)
-            df.to_csv(base_dir + '/dataset_random.csv')
-        if val == 2:
-            df = SyntheticRho.compute_algorithm_results(cache_size, dataset_sorted_ascending_depth)
-            df.to_csv(base_dir + '/dataset_sorted_ascending_depth.csv')
+        p_tule_array = [(1, 2),
+                        (4, 8),
+                        (16, 32),
+                        (64, 100)]
+        idx = int(sys.argv[1])
+        for p in p_tule_array[idx]:
+            for i in range(5):
+                zipf_distribution = SyntheticRho.create_zipf(6000,
+                                                             base_dir + 'zipf_distribution{0}_p{1}.json'.format(i, p))
+                print("p: {0}, i: {1}".format(p, i))
+                dataset = SyntheticRho.generate_policy(n_nodes, zipf_distribution, p)
+                df = SyntheticRho.compute_algorithm_results(cache_size, dataset, p)
+                df.to_csv(base_dir + '/results{0}_p_{1}.csv'.format(i, p))
+                print(base_dir + '/results{0}_p{1}.csv'.format(i, p))
 
     @staticmethod
     def generate_tree_by_degree(n_nodes, degree, zipf_distribution):
@@ -1010,28 +1007,18 @@ class SyntheticRho:
 
     @staticmethod
     def calc_rho(data_dict, vertex2weight):
-
-        no_root_filter = lambda data_dict: filter(lambda v: v[0] != 0,
-                                                  data_dict.items())
-        sum_total = sum(vertex2weight.values())
-        old_rho = sum([(vertex2weight[v] / sum_total) * ((nd.subtree_size + 1) / (1 + nd.n_successors)) for v, nd in
-                       list(no_root_filter(data_dict))])
-        return old_rho
-
-    @staticmethod
-    def calc_new_rho(data_dict, vertex2weight):
         no_root_filter = lambda data_dict: filter(lambda v: v[0] != 0,
                                                   data_dict.items())
         sum_total = sum(vertex2weight.values())
 
-        new_rho = sum([(vertex2weight[v] / sum_total) * (nd.subtree_size + 1) for v, nd in
-                       list(no_root_filter(data_dict))]) / sum(
-            [(vertex2weight[v] / sum_total) * (nd.n_successors + 1) for v, nd in
-             list(no_root_filter(data_dict))])
-        return new_rho
+        rho_numerator = sum([(vertex2weight[v] / sum_total) * (nd.subtree_size + 1) for v, nd in
+                             list(no_root_filter(data_dict))])
+        rho_denominator = sum([(vertex2weight[v] / sum_total) * (nd.n_successors + 1) for v, nd in
+                               list(no_root_filter(data_dict))])
+        return rho_numerator, rho_denominator, rho_numerator / rho_denominator
 
     @staticmethod
-    def plot_csv_rho(csv_path, rho_type='rho', cache_size=None):
+    def plot_csv_rho(csv_path, path_to_save, rho_type='rho', cache_size=None):
         df = pd.read_csv(csv_path)
         if not cache_size:
             cache_size = max(df['Cache Size'])
@@ -1046,7 +1033,9 @@ class SyntheticRho:
         # ax1.plot(x_data, hit_to_miss(df['greedy_splice_result']), label="GreedySplice", marker="s")
         ax1.plot(x_data, hit_to_miss(df['opt_local_result']), label="OptLocal", marker="o")
         ax1.plot(x_data, hit_to_miss(df['opt_splice_result']), label="OptSplice", marker="P")
-        ax2.plot(x_data, df[rho_type], label=r'$\rho$', marker="d", color='red')
+        # ax2.plot(x_data, list(map(lambda x: math.log(x, 10),df[rho_type])), label=r'$\rho$', marker="d", color='red')
+        ax2.plot(x_data, df[rho_type], label=r'$\rho$ denominator', marker="d", color='red')
+
         print(df[rho_type])
 
         xy_label_font_size = 28
@@ -1057,11 +1046,12 @@ class SyntheticRho:
 
         ax1.set_xlabel("degree", fontsize=xy_label_font_size)
         ax1.set_ylabel("Cache Miss (%)", fontsize=xy_label_font_size)
-        ax2.set_ylabel(r'$\rho$', fontsize=xy_label_font_size)
+        # ax2.set_ylabel(r'$\sum_{v\in V}\frac{w(v)}{W}\cdot |{T_{v}}|$', fontsize=xy_label_font_size)
+        ax2.set_ylabel(r'$\sum_{v\in V}\frac{w(v)}{W}\cdot (deg(v)+1)$', fontsize=xy_label_font_size)
 
-        ax2.set_ylim([1, 350])
+        ax2.set_ylim([0, 30])
         ax1.set_ylim([0, 100])
-        ax2.set_yscale('log')
+        # ax2.set_yscale('log')
 
         lines_1, labels_1 = ax1.get_legend_handles_labels()
         lines_2, labels_2 = ax2.get_legend_handles_labels()
@@ -1074,21 +1064,13 @@ class SyntheticRho:
 
         # plt.show()
 
-        if rho_type == 'new_rho':
-            path_to_save = 'result/rho/sum60_70/Figures/' + csv_path.split('/')[-1].replace('.csv',
-                                                                                            '_{0}_new_rho.png'.format(
-                                                                                                int(cache_size)))
-        else:
-            path_to_save = 'result/rho/sum60_70/Figures/' + csv_path.split('/')[-1].replace('.csv',
-                                                                                            '_{0}.png'.format(
-                                                                                                int(cache_size)))
         print(path_to_save)
         h = 4
         fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
         fig.savefig(path_to_save, dpi=300)
 
     @staticmethod
-    def plot_csv_rho_diff(csv_path, rho_type='rho', cache_size=None):
+    def plot_csv_rho_diff(csv_path, path_to_save, rho_type='rho', cache_size=None):
         df = pd.read_csv(csv_path)
         if not cache_size:
             cache_size = max(df['Cache Size'])
@@ -1101,10 +1083,12 @@ class SyntheticRho:
 
         x_data = list(map(lambda v: str(int(v)), df['degree']))
         ax1.plot(x_data, [(100 - optlocal) - (100 - optsplice) for optlocal, optsplice in zip(df['opt_local_result'],
-                                                                                       df['opt_splice_result'])],
-                                                                                       label="OptLocal-OptSplice",
-                                                                                             marker="o")
-        ax2.plot(x_data, df[rho_type], label=r"$\rho$", marker="d", color='red')
+                                                                                              df['opt_splice_result'])],
+                 label="OptLocal-OptSplice",
+                 marker="o")
+        # ax2.plot(x_data, list(map(math.log10,df[rho_type])), label=r"$\rho$", marker="d", color='red')
+        # ax2.plot(x_data, df[rho_type], label=r"$\rho$ numerator", marker="d", color='red')
+        ax2.plot(x_data, df[rho_type], label=r"$\rho$ denominator", marker="d", color='red')
 
         xy_label_font_size = 28
         ax1.xaxis.set_tick_params(labelsize=xy_label_font_size)
@@ -1120,9 +1104,14 @@ class SyntheticRho:
         # ax1.set_ylim([0, 30])
         # ax2.set_yscale('log')
 
-        ax2.set_ylim([1, 350])
-        ax1.set_ylim([0, 100])
-        ax2.set_yscale('log')
+        # ax2.set_ylabel(r'$\sum_{v\in V}\frac{w(v)}{W}\cdot |{T_{v}}|$', fontsize=xy_label_font_size)
+        ax2.set_ylabel(r'$\sum_{v\in V}\frac{w(v)}{W}\cdot (deg(v)+1)$', fontsize=xy_label_font_size)
+
+        ax2.set_ylim([0, 30])
+
+        # ax2.set_ylim([0, 300])
+        ax1.set_ylim([0, 55])
+        # ax2.set_yscale('log')
 
         lines_1, labels_1 = ax1.get_legend_handles_labels()
         lines_2, labels_2 = ax2.get_legend_handles_labels()
@@ -1132,14 +1121,6 @@ class SyntheticRho:
         ax1.legend(lines, labels, prop=dict(size=16))
         ax1.grid(True)
         fig.tight_layout()
-
-
-        if rho_type == 'new_rho':
-            path_to_save = 'result/rho/sum60_70/Figures/' + csv_path.split('/')[-1].replace(
-                '.csv', '_new_rho_diff_{0}.png'.format(int(cache_size)))
-        else:
-            path_to_save = 'result/rho/sum60_70/Figures/' + csv_path.split('/')[-1].replace(
-                '.csv', '_diff_{0}.png'.format(int(cache_size)))
 
         print(path_to_save)
         h = 4
@@ -1158,18 +1139,34 @@ class SyntheticRho:
 
     @staticmethod
     def plot_real_traces_rho():
-        data = {
-            "Stanford\nRandom": SyntheticRho.calculate_rho_for_weight_distribution(
-                'traces/zipf_trace_1_0_prefix2weight.json'),
-            "Standford\nby height": SyntheticRho.calculate_rho_for_weight_distribution(
-                'traces/prefix2weight_sum60_70sorted_by_node_depth.json'),
-            "Caida\nA": SyntheticRho.calculate_rho_for_weight_distribution('traces/caida_traceTCP_prefix_weight.json'),
-            "Caida\nB": SyntheticRho.calculate_rho_for_weight_distribution('traces/caida_traceUDP_prefix_weight.json')}
+        # data = {
+        #     "Stanford\nRandom": SyntheticRho.calculate_rho_for_weight_distribution(
+        #         'traces/zipf_trace_1_0_prefix2weight.json'),
+        #     "Stanford\nby height": SyntheticRho.calculate_rho_for_weight_distribution(
+        #         'traces/prefix2weight_sum60_70sorted_by_node_depth.json'),
+        #     "Caida\nA": SyntheticRho.calculate_rho_for_weight_distribution('traces/caida_traceTCP_prefix_weight.json'),
+        #     "Caida\nB": SyntheticRho.calculate_rho_for_weight_distribution('traces/caida_traceUDP_prefix_weight.json')
+        # }
+        #
+        # with open('result/rho/real_traces_rho.json', 'w') as f:
+        #     json.dump(data, f)
 
-        data = {k: np.around(v, 2) for k, v in sorted(data.items(), key=lambda val: val[1])}
+        with open('result/rho/real_traces_rho.json', 'r') as f:
+            data = json.load(f)
+
+        # rho_numerator, rho_denominator, rho_numerator / rho_denominator
+        caida_data = {k : np.around(v[-1], 2) for k,v in list(filter(lambda nm: 'Caida' in nm[0], data.items()))}
+        stanford_data = {k : np.around(v[-1], 2) for k,v in list(filter(lambda nm: 'Stanford' in nm[0], data.items()))}
+        # data = {k: np.around(v, 2) for k, v in sorted(data.items(), key=lambda val: val[1])}
 
         fig, ax = plt.subplots()
-        ax.plot(list(data.keys()), list(data.values()), marker="d", color="red", markersize=14)
+        # path_to_save = 'result/rho/2908/figures/rho_real_traces_stanford.png'
+        path_to_save = 'result/rho/2908/figures/rho_real_traces_caida.png'
+
+        # ax.plot(list(caida_data.keys()), list(caida_data.values()), marker="d", color="red"T, markersize=14)
+        ax.bar(list(caida_data.keys()), list(caida_data.values()))#, marker="d", color="red", markersize=14)
+        ax.set_ylim([0,5.5])
+
 
         xy_label_font_size = 28
         ax.xaxis.set_tick_params(labelsize=20)
@@ -1181,7 +1178,6 @@ class SyntheticRho:
         ax.grid(True)
 
         # plt.show()
-        path_to_save = 'result/Figures/new_rho/rho_real_traces.png'
         fig.tight_layout()
         print(path_to_save)
         h = 4
@@ -1236,6 +1232,169 @@ class SyntheticRho:
         fig.tight_layout()
         print(path_to_save)
         h = 4
+        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+        fig.savefig(path_to_save, dpi=300)
+
+    @staticmethod
+    def plot_scatter_rho_cache_miss_dif(result_summary_csv):
+        df = pd.read_csv(result_summary_csv)
+        # df = df[(df['Cache Size'] == 1024)]
+
+        marker_type = {32: "v", 16: "^", 8: "d", 4: "s", 2: "o"}  # 32, 16, 8, 4, 2
+        # 1,2,4,8,16,32,100
+        p_array = {
+            1: "#000000",
+            2: "#403f3f",
+            4: "#757575",
+            8: "#9c9c9c",
+            9: "#808080",
+            8: "#c0c0c0",  # silver,
+            16: "#dbdbdb",
+            32: "#edeef0",
+            100: "#ffffff"}
+
+        for cache_size in [1024]:  # [64, 256, 512, 1024]:
+            plt.clf()
+            fig, ax = plt.subplots()
+            rho_type = "rho_denominator"
+            path_to_save = 'result/rho/2908/figures/{0}_{1}.png'.format(rho_type, cache_size)
+
+            for d, mt in marker_type.items():
+                for p, snd_mt in p_array.items():
+                    df_t = df[(df['degree'] == d) & (df['p'] == p) & (df['Cache Size'] == cache_size)]
+
+                    if snd_mt == "#ffffff":
+                        ax.scatter(list(map(lambda x: x, df_t[rho_type])),
+                                   df_t['opt_splice_result'] - df_t['opt_local_result'], s=300, c=snd_mt,
+                                   edgecolor="black", marker=MarkerStyle(mt), label="d: {0}".format(d))
+                    else:
+                        ax.scatter(list(map(lambda x: x, df_t[rho_type])),
+                                   df_t['opt_splice_result'] - df_t['opt_local_result'], s=300, c=snd_mt,
+                                   edgecolor="black", marker=MarkerStyle(mt))
+
+            xy_label_font_size = 28
+            ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
+            ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
+
+            ax.set_xlabel(r'$log(\rho)$'.format(cache_size), fontsize=xy_label_font_size)
+            ax.set_ylabel('Cache Miss Diff (%)', fontsize=xy_label_font_size)
+            # ax.set_ylabel('Cache Miss Diff (%)', fontsize=xy_label_font_size)
+            # ax.set_xlim([0,0.005])
+            # ax.set_ylim([0, 65])
+            # ax.set_xscale('log', basex=2)
+            # ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
+            ax.legend(prop=dict(size=28))
+
+            ax.grid(True)
+            N = len(p_array)
+            cmap = plt.get_cmap('Greys_r', N)
+            # norm = mpl.colors.Normalize(vmin=0, vmax=100)
+            norm = mpl.colors.LogNorm(vmin=1, vmax=100)
+            sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+            cbar = fig.colorbar(sm, ax=ax)  # , label=")
+            cbar.set_label(label="Traffic (%)", size=xy_label_font_size)  # , weight='bold')
+            cbar.set_ticks([1, 2, 4, 8, 16, 32, 64, 100])
+            cbar.set_ticklabels(['$1$', '$2$', '$4$', '$8$', '$16$', '$32$', '$64$', '$100$'])
+            cbar.ax.tick_params(labelsize=xy_label_font_size)
+
+            fig.tight_layout()
+            # plt.show()
+            print(path_to_save)
+            h = 8
+            fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+            fig.savefig(path_to_save, dpi=300)
+        #
+        # print("s")
+
+    @staticmethod
+    def exapnd_rho_calculation(result_csv):
+        zipf_path = "result/rho/sorted_zipf/distribution/"
+        data = {}
+        for json_file in filter(lambda x: 'json' in x, os.listdir(zipf_path)):
+            p = int(json_file.split(".")[0].split("_")[-1])
+            with open(zipf_path + json_file, "r") as f:
+                zipf_distribution = json.load(f)
+            curr_data = SyntheticRho.generate_policy(6000, zipf_distribution, p)
+            for node_data_dict, vtx2weight, prefix2weight, degree in curr_data:
+                data[(p, int(degree))] = (node_data_dict, vtx2weight)
+
+        df = pd.read_csv(result_csv)
+
+        for index, row in df.iterrows():
+            p = int(row['p'])
+            degree = int(row['degree'])
+            cache_size = int(row['Cache Size'])
+            data_dict, vertex2weight = data[(p, int(degree))]
+            no_root_filter = lambda data_dict: filter(lambda v: v[0] != 0,
+                                                      data_dict.items())
+            no_root_filter_cache_size = lambda data_dict: filter(
+                lambda v: v[0] != 0 and v[1].subtree_size <= cache_size,
+                data_dict.items())
+            sum_total = sum(vertex2weight.values())
+
+            rho_numerator = sum([(vertex2weight[v] / sum_total) * (nd.subtree_size + 1) for v, nd in
+                                 list(no_root_filter_cache_size(data_dict))])
+            rho_denominator = sum([(vertex2weight[v] / sum_total) * (nd.n_successors + 1) for v, nd in
+                                   list(no_root_filter(data_dict))])
+            df.loc[index, 'rho_k'] = rho_numerator / rho_denominator
+            df.loc[index, 'rho_k_numerator'] = rho_numerator
+            df.loc[index, 'rho_k_denominator'] = rho_denominator
+
+        df.to_csv(result_csv.replace(".csv", "_updated.csv"))
+
+    @staticmethod
+    def plot_heatmap(csv_path):
+        df = pd.read_csv(csv_path)
+        df = df.round(2)
+        df = df[(df['Cache Size'] == 1024)]
+        df['cache_miss_diff'] = df['opt_splice_result'] - df['opt_local_result']
+
+        columns = ['degree', 'p', 'rho', 'rho_numerator', 'rho_denominator', 'cache_miss_diff']
+        df = df[columns]
+        unique_df = pd.DataFrame(columns=columns)
+        check = set()
+
+        for index, row in df.iterrows():
+            key = "_".join([str(row[col]) for col in columns])
+            if key in check:
+                continue
+            else:
+                check.add(key)
+                unique_df = unique_df.append(row, ignore_index=True)
+
+        # unique_df["log_rho"] = list(map(lambda v: np.log2(v), unique_df['rho']))
+        # plot_cache_miss_diff = unique_df.pivot("degree", "p", "log_rho")
+        # path_to_save = 'result/rho/2908/figures/degree_p_log_rho.png'
+
+        # plot_cache_miss_diff = unique_df.pivot("degree", "p", "cache_miss_diff")
+        # path_to_save = 'result/rho/2908/figures/degree_p_cache_miss_diff.png'
+
+        # unique_df["log_rho_numerator"] = list(map(lambda v: np.log2(v), unique_df['rho_numerator']))
+        # plot_cache_miss_diff = unique_df.pivot("degree", "p", "log_rho_numerator")
+        # path_to_save = 'result/rho/2908/figures/degree_p_log_rho_numerator.png'
+
+        unique_df["log_rho_numerator"] = list(map(lambda v: np.log2(v), unique_df['rho_numerator']))
+        plot_cache_miss_diff = unique_df.pivot("degree", "p", "rho_denominator")
+        path_to_save = 'result/rho/2908/figures/degree_p_rho_denominator.png'
+
+
+        ax = sns.heatmap(plot_cache_miss_diff)
+        xy_label_font_size = 28
+        # ax.tick_params(labelsize=xy_label_font_size)
+        cbar = ax.collections[0].colorbar
+        cbar.ax.tick_params(labelsize=xy_label_font_size)
+        ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
+        ax.set_xlabel("Traffic (%)", fontsize=xy_label_font_size)
+        ax.set_ylabel('Degree', fontsize=xy_label_font_size)
+
+        fig = ax.get_figure()
+        fig.tight_layout()
+        # plt.show()
+
+        print(path_to_save)
+        print("")
+        h = 8
         fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
         fig.savefig(path_to_save, dpi=300)
 
@@ -1310,41 +1469,83 @@ def create_heatmap():
     UDP_heatmap_data = base + "bar_weight_data/UDP_heatmap_data.npy"
     PlotResultTable.plot_heatmap(policy, prefix2weight, UDP_heatmap_data)
 
-def join_csvs(dataset_random, dataset_ascending, dataset_descending):
-    df_random = pd.read_csv(dataset_random)
-    df_ascending = pd.read_csv(dataset_ascending)
-    df_descending = pd.read_csv(dataset_descending)
 
-    df_random = df_random[(df_random['Cache Size'] == 1024)]
-    df_ascending = df_ascending[(df_ascending['Cache Size'] == 1024)]
-    df_descending = df_descending[(df_descending['Cache Size'] == 1024)]
+def join_csvs(dir_path):
+    df_array = []
+    df_dict = {}
+    for idx, csv_file in enumerate(filter(lambda f: 'csv' in f, os.listdir(dir_path))):
+        p = int(csv_file.split('_')[-1].replace('.csv', ''))
+        curr_df = pd.read_csv(dir_path + csv_file)
+        curr_df['i'] = [idx] * curr_df.shape[0]
+        df_dict[p] = [pd.concat([curr_df] + df_dict.get(p, []))]
+    cache_size_array = list(df_dict[1][0]['Cache Size'].drop_duplicates())
+    degree_array = list(df_dict[1][0]['degree'].drop_duplicates())
 
-    df_random['type'] = ['random']*df_random.shape[0]
-    df_ascending['type'] = ['ascending']*df_ascending.shape[0]
-    df_descending['type'] = ['descending']*df_descending.shape[0]
+    columns = ['Cache Size', 'degree', 'p']
+    col_dyn = list(filter(lambda col_name: 'i' != col_name and 'Unnamed' not in col_name,
+                          set(df_dict[1][0].columns) - set(columns)))
+    for col_d in col_dyn:
+        columns.append(col_d)
+        columns.append(col_d + "_std")
 
-    final_df = pd.concat([df_descending, df_random, df_ascending])
-    final_df.to_csv('result/rho/result_summary.csv')
+    result_df = pd.DataFrame(columns=columns)
+    for cache_size in cache_size_array:
+        for degree in degree_array:
+            for p, df_lst in df_dict.items():
+                df = df_lst[0]
+                sumz_df = df[(df['Cache Size'] == cache_size) &
+                             (df['degree'] == degree)]
+                row = {
+                    'Cache Size': cache_size,
+                    'degree': degree,
+                    'p': p,
+                }
+                col_data = list(filter(lambda col_name: 'i' != col_name and 'Unnamed' not in col_name,
+                                       set(sumz_df.columns) - set(row.keys())))
+                for col in col_data:
+                    row[col] = np.average(sumz_df[col])
+                    row[col + "_std"] = np.std(sumz_df[col])
+
+                result_df = result_df.append(row, ignore_index=True)
+
+        # df = pd.read_csv(dir_path + csv_file)
+        # df = df[(df['Cache Size'] == 1024)]
+        # df_array.append(df)
+
+    # res_df = pd.concat(df_array)
+    # res_df.to_csv("result/rho/scatter_plot/result_summary.csv")
     print("s")
+    result_df.to_csv('result/rho/2908/summary_all.csv')
+    # res_df.to_csv("result/rho/scatter_plot/result_summary.csv")
+
+    # df_random = pd.read_csv(dataset_random)
+    # df_ascending = pd.read_csv(dataset_ascending)
+    # df_descending = pd.read_csv(dataset_descending)
+    #
+    # df_random = df_random[(df_random['Cache Size'] == 1024)]
+    # df_ascending = df_ascending[(df_ascending['Cache Size'] == 1024)]
+    # df_descending = df_descending[(df_descending['Cache Size'] == 1024)]
+    #
+    # df_random['type'] = ['random'] * df_random.shape[0]
+    # df_ascending['type'] = ['ascending'] * df_ascending.shape[0]
+    # df_descending['type'] = ['descending'] * df_descending.shape[0]
+    #
+    # final_df = pd.concat([df_descending, df_random, df_ascending])
+    # final_df.to_csv('result/rho/result_summary.csv')
+    # print("s")
 
 
 def main():
-    # RunCheck.test_random_OptLPM()
-    # RunCheck.running_example()
-    # parse_mrt()
-    # RunCheck.compare_greedy_opt_solution()
-    # SyntheticRho.generate_rho_experiment('result/rho')
-    # SyntheticRho.plot_csv_rho_diff('result/rho/dataset_sorted_ascending_depth.csv',rho_type='new_rho')
-    # SyntheticRho.plot_csv_rho_diff('result/rho/dataset_sorted_descending_depth.csv',rho_type='new_rho')
-    # SyntheticRho.plot_csv_rho_diff('result/rho/dataset_random.csv',rho_type='new_rho')
-    # for cache_size in [1024]:#, 512, 64]:
-    #     SyntheticRho.plot_csv_rho('result/rho/dataset_sorted_ascending_depth.csv',rho_type="new_rho", cache_size=cache_size)
-    #     SyntheticRho.plot_csv_rho('result/rho/dataset_sorted_descending_depth.csv',rho_type="new_rho",cache_size=cache_size)
-    #     SyntheticRho.plot_csv_rho('result/rho/dataset_random.csv',rho_type="new_rho",cache_size=cache_size)
+    # SyntheticRho.generate_rho_experiment('result/rho/2908/')
+    # SyntheticRho.plot_real_traces_rho()
 
-    # SyntheticRho.create_zipf(6000, 'result/rho')
+    # join_csvs('result/rho/2908/')
+    # SyntheticRho.exapnd_rho_calculation("result/rho/scatter_plot/result_summary.csv")
 
+    SyntheticRho.plot_scatter_rho_cache_miss_dif("result/rho/2908/summary_all.csv")
+    # SyntheticRho.plot_heatmap("result/rho/2908/summary_all.csv")
 
+    # SyntheticRho.plot_scatter_rho_cache_miss_dif("result/rho/2908/summary_all.csv")
 
 
 if __name__ == "__main__":

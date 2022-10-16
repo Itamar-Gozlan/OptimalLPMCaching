@@ -15,6 +15,47 @@ ROOT_PREFIX = '0.0.0.0/0'
 ADD_GOTO_NODES = True
 
 
+class NodeData:
+    def __init__(self, weight=0, size=0, distance=0, n_successors=0, v=0):
+        self.subtree_weight = weight
+        self.subtree_size = size
+        self.subtree_depth = distance
+        self.n_successors = n_successors
+        self.dependent_set = set()
+        self.v = v
+
+    def unpack(self):
+        return self.subtree_size, self.n_successors, self.v
+
+    @staticmethod
+    def construct_node_data_dict(policy):
+        policy = list(map(lambda s: s.strip(), policy))
+        policy_tree, rule_to_vertex, successors = HeuristicLPMCache.process_policy(policy)
+        vertex_to_rule = {value: key for key, value in rule_to_vertex.items()}
+        depth_dict = HeuristicLPMCache.construct_depth_dict(policy_tree)
+        # Looking for nodes with low count of successors and big subtrees
+        data_dict = {}
+        for depth in sorted(list(depth_dict.keys()), reverse=True):
+            for v in depth_dict[depth]:
+                node_data = NodeData()
+                node_data.subtree_size = 1
+                node_data.dependent_set = {v}
+                if len(successors[v]) == 0:  # leaf
+                    node_data.subtree_depth = 1
+                else:
+                    for u in successors[v]:
+                        node_data.subtree_size += data_dict[u].subtree_size
+                        node_data.dependent_set.update(data_dict[u].dependent_set)
+                    node_data.subtree_depth = 1 + max(
+                        [data_dict[u].subtree_depth for u in successors[v]])
+                node_data.v = v
+                node_data.n_successors = len(successors[v])
+                node_data.v = v
+                data_dict[v] = node_data
+
+        return data_dict, vertex_to_rule
+
+
 class FeasibleSet:
     def __init__(self) -> None:
         self.feasible_iset = {}
@@ -773,3 +814,137 @@ class OptimizedOptimalLPMCache:
                    "Hit Rate": 100 * self.vtx_S[ROOT][1][i] / total_weight}
             df = df.append(row, ignore_index=True)
         df.to_csv(dir_path + '/result.csv')
+
+
+class CacheFlow:
+    def __init__(self, policy):
+        self.policy_tree, self.rule_to_vertex, self.successors = HeuristicLPMCache.process_policy(policy)
+        data_dict, vertex_to_rule = NodeData.construct_node_data_dict(policy)
+        self.vertex_to_rule = vertex_to_rule
+        #  Each rule is assigned a "cost" corresponding to the number of rules that must be installed together
+        self.dependent_set = {nd.v: nd.dependent_set for nd in data_dict.values()}
+        self.dependent_set_cost = {nd.v: nd.subtree_size for nd in data_dict.values()}
+        self.dependent_set_cost[ROOT] = len(policy)
+
+        self.cover_set = {v: set(self.policy_tree.neighbors(v)) for v in self.policy_tree.nodes()}
+        self.cover_set_cost = {nd.v: nd.n_successors + 1 for nd in data_dict.values()}
+
+    def DependentSet(self, prefix_weight):
+        #  At each stage, the algorithm chooses a set of rules that maximizes the ratio of combined rule weight
+        #  to combined rule cost (∆W / ∆C) until the total cost reaches k
+        ratio2vertex = {}
+        for v in self.policy_tree.nodes:
+            rule_str = self.vertex_to_rule[v]
+            rule_weight = prefix_weight[rule_str]
+            rule_cost = self.rule_cost[v]
+            ratio2vertex[rule_weight / rule_cost] = [v] + ratio2vertex.get(rule_weight / rule_cost, [])
+
+        return ratio2vertex
+
+    def CoverSet(self, prefix_weight):
+        ratio2vertex = {}
+        for v in self.policy_tree.nodes:
+            rule_str = self.vertex_to_rule[v]
+            rule_weight = prefix_weight[rule_str]
+            rule_cost = self.cover_set[v]
+            ratio2vertex[rule_weight / rule_cost] = [v] + ratio2vertex.get(rule_weight / rule_cost, [])
+
+        return ratio2vertex
+
+    def MixedSetWrong(self, prefix_weight, cache_size):
+        # heuristic that chooses the best of the two alternatives at each iteration
+        dependent_set_r2v = self.DependentSet(prefix_weight)
+        cover_set_r2v = self.CoverSet(prefix_weight)
+
+        dependent_ratio = sorted(dependent_set_r2v.keys())
+        cover_ratio = sorted(cover_set_r2v.keys())
+
+        cache = set()
+        gtc = set()
+
+        while bool(dependent_ratio) and bool(cover_ratio):
+            if dependent_ratio[-1] >= cover_ratio[-1]:
+                ratio = dependent_ratio.pop()
+                for v in dependent_set_r2v[ratio]:
+                    if v in cache or len(cache.union(self.dependent_set[v])) > cache_size:
+                        continue
+                    cache.update(self.dependent_set[v])
+
+            else:
+                ratio = cover_ratio.pop()
+                for v in cover_set_r2v[ratio]:
+                    if v in cache or len(cache.union(self.policy_tree.successors(v))) + 1 > cache_size:
+                        continue
+                    cache.add(v)
+                    for u in self.policy_tree.successors(v):
+                        if u in cache:
+                            continue
+                        cache.add(u)
+                        gtc.add(u)
+
+        return cache, gtc
+
+    def MixedSet(self, prefix_weight, cache_size):  # x -> weight(x), cache_size k
+        cache = set()
+        cache_n = 0
+        cache_weight = 0
+        gtc = set()
+        set_weight = lambda s: sum([prefix_weight[self.vertex_to_rule[v]] for v in s])
+        # x -> (x, cover_set_ratio, dependent_set_ratio) x is a rule (node)
+        data = {x: (x,
+                    prefix_weight[self.vertex_to_rule[x]] / self.cover_set_cost[x],
+                    set_weight(self.dependent_set[x]) / self.dependent_set_cost[x])
+                for x in self.policy_tree.nodes()}
+
+        del data[ROOT]
+
+        while cache_n != cache_size and len(data) != 0:
+            print("cache_n: {0}, cache_weight: {1}".format(cache_n, cache_weight))
+            x, cover_set_value, dependent_set_value = max(data.values(),
+                                                          key=lambda data_tuple: max(data_tuple[1], data_tuple[2]))
+
+            if dependent_set_value >= cover_set_value and cache_n + self.dependent_set_cost[x] > cache_size:
+                # Consider the case when dependent set has the maximal value but cannot fit the cache
+                # We might consider x's cover set in the future
+                data[x] = (x, cover_set_value, 0)
+                continue
+            elif dependent_set_value < cover_set_value and cache_n + self.cover_set_cost[x] > cache_size:
+                del data[x]
+                continue
+
+            if cover_set_value > dependent_set_value:
+                cache_additional_cost = self.cover_set_cost[x]
+                set_to_insert = set(self.cover_set[x])
+                set_to_insert.add(x)  # TODO: fix it, make sure x is in cost and not in GTC
+                gtc = gtc.union(set_to_insert)
+                gtc.remove(x)
+            else:
+                cache_additional_cost = self.dependent_set_cost[x]
+                set_to_insert = self.dependent_set[x]
+
+            cache = cache.union(set_to_insert)
+            cache_n += cache_additional_cost
+            # cache_weight += weight
+
+            for x in set_to_insert:
+                if x in data:
+                    del data[x]
+
+            x_pred = list(self.policy_tree.predecessors(x))[0]  # tree, one element is predecessor
+            # TODO: remove the weight of the dependent set from the parent of x (x's parent is a leaf)
+            while x_pred != ROOT:
+                self.dependent_set[x_pred] = self.dependent_set[x_pred] - self.dependent_set[x]
+                self.dependent_set_cost[x_pred] = self.dependent_set_cost[x_pred] - self.dependent_set_cost[x]
+                if x in self.cover_set[x_pred]:
+                    self.cover_set[x_pred].remove(x)  # only for the first node
+                    self.cover_set_cost[x] -= 1
+
+                data[x_pred] = (x_pred,)
+                """
+                    prefix_weight[self.vertex_to_rule[x]] / self.cover_set_cost[x],
+                    set_weight(self.dependent_set[x]) / self.dependent_set_cost[x])
+                """
+
+                x_pred = list(self.policy_tree.predecessors(x_pred))[0]  # tree, one element is predecessor
+
+        return cache, gtc, cache_weight, cache_n

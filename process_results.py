@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
-from Zipf import produce_packet_array_of_prefix_weight, NodeData
+from Zipf import produce_packet_array_of_prefix_weight
 import Utils
 from Algorithm import *
 import time
@@ -18,6 +18,7 @@ from matplotlib.markers import MarkerStyle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib as mpl
 import seaborn as sns
+import glob
 
 ROOT = 0
 ROOT_PREFIX = '0.0.0.0/0'
@@ -255,7 +256,7 @@ class RunCheck:
         avg_degree = 3
         depth = 5
         cache_size = 5
-        policy = set(RunCheck.get_random_policy_and_weight(depth, avg_degree))
+        policy = set(RunCheck.get_random_policy_and_weight(avg_degree, depth))
         zipf_w = np.random.zipf(1.67, len(policy))
         prefix_weight = {p: zipf_w[idx] for idx, p in enumerate(policy)}
         print("policy = {0}".format(policy))
@@ -468,6 +469,52 @@ class RunCheck:
             df = df.append(row, ignore_index=True)
         df.to_csv("policy_features.csv")
 
+    @staticmethod
+    def run_CacheFlow():
+        avg_degree = 2
+        n_nodes = 100
+        cache_size = 13
+        while True:
+            policy = set(RunCheck.get_random_policy_and_weight(avg_degree, n_nodes))
+            zipf_w = np.random.zipf(1.67, len(policy))
+
+            # policy = sorted(policy, key=lambda s: int(s.split('/')[-1]))
+            # zipf_w = sorted(zipf_w, reverse=True)
+
+            prefix_weight = {p: zipf_w[idx] for idx, p in enumerate(policy)}
+
+            print("policy = {0}".format(policy))
+            print("prefix_weight = {0}".format(prefix_weight))
+            print("len(policy) = {0}".format(len(policy)))
+
+            prefix_weight[ROOT_PREFIX] = 0
+            cache_flow = CacheFlow(policy)
+
+            cache, gtc, cache_weight, cache_size = cache_flow.MixedSet(prefix_weight, cache_size)
+            print(cache_size)
+            print(cache_weight)
+            print(len(cache))
+            if len(gtc) > 0:
+                break
+            # break
+
+        color_map = []
+        for vtx in cache_flow.policy_tree.nodes:
+            # color_map.append('lime')
+            if vtx in gtc:
+                color_map.append('gray')
+                continue
+
+            if vtx in cache:
+                color_map.append('pink')
+                continue
+            else:
+                color_map.append('lime')
+        labels = {v: str(v) + "\n" + str(prefix_weight[cache_flow.vertex_to_rule[v]])
+                  for idx, v in enumerate(cache_flow.policy_tree.nodes)}
+        Utils.draw_tree(cache_flow.policy_tree, labels, color_map=color_map)
+        plt.show()
+
 
 class ResultToTable:
     @staticmethod
@@ -584,7 +631,7 @@ class ResultToTable:
 
 class PlotResultTable:
     @staticmethod
-    def plot_true_false_opt_df(true_df, false_df, opt_df, path_to_save, ylim=[0, 100]):
+    def plot_true_false_opt_df(true_df, false_df, opt_df, mixedset_df, path_to_save, ylim=[0, 100]):
         fig, ax = plt.subplots()
         ax.plot(list(map(str, true_df['Cache Size'])), list(map(lambda v: 100 - v, true_df['Hit Rate'])), marker="s",
                 markersize=14, label="GreedySplice")
@@ -593,6 +640,9 @@ class PlotResultTable:
         ax.plot(list(map(lambda x: str(int(x)), opt_df['Cache Size'])),
                 list(map(lambda v: 100 - v, opt_df['Hit Rate'])), marker="P",
                 markersize=14, label="OptSplice")
+        ax.plot(list(map(lambda x: str(int(x)), mixedset_df['Cache Size'])),
+                list(map(lambda v: 100 - v*100, mixedset_df['Hit Rate'])), marker="D",
+                markersize=14, label="Mixed-Set")
 
         xy_label_font_size = 28
         ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
@@ -602,9 +652,13 @@ class PlotResultTable:
         ax.set_ylabel('Cache Miss (%)', fontsize=xy_label_font_size)
         ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
         ax.set_ylim(ylim)
-        ax.legend(prop=dict(size=16))
+        ax.legend(prop=dict(size=13))#, loc='lower left')
         ax.grid(True)
 
+        # path_to_save = path_to_save.replace('.jpg', '_tls.jpg')
+        # path_to_save = 'result/Figures/1510/' + path_to_save.split('/')[-1]
+        print(path_to_save)
+        # plt.show()
         fig.tight_layout()
         print(path_to_save)
         h = 4
@@ -630,7 +684,7 @@ class PlotResultTable:
         print("s")
 
     @staticmethod
-    def plot_special_sort_result_table(csv_path, opt_csv_path):
+    def plot_special_sort_result_table(csv_path, opt_csv_path, mixedset_csv_path):
         df = pd.read_csv(csv_path)
 
         true_df = df[(df['Splice'] == True)][['Cache Size', 'Hit Rate']].sort_values(by='Cache Size')
@@ -638,8 +692,11 @@ class PlotResultTable:
         cache_size_array = list(false_df['Cache Size'])
         df_opt_raw = pd.read_csv(opt_csv_path)
         df_opt = df_opt_raw[(df_opt_raw['Cache Size'].isin(cache_size_array))]
+        df_mixedset = pd.read_csv(mixedset_csv_path)
 
-        PlotResultTable.plot_true_false_opt_df(true_df, false_df, df_opt, csv_path.replace('csv', 'jpg'))
+        path_to_save = 'result/Figures/1510/' + csv_path.split('/')[-2] + '.jpg'
+        PlotResultTable.plot_true_false_opt_df(true_df, false_df, df_opt, df_mixedset,
+                                               path_to_save)
 
     @staticmethod
     def calculate_and_save_bar_data(policy_json_path, prefix2weight_json_path, height2weight_histogram_json_path):
@@ -1155,8 +1212,8 @@ class SyntheticRho:
             data = json.load(f)
 
         # rho_numerator, rho_denominator, rho_numerator / rho_denominator
-        caida_data = {k : np.around(v[-1], 2) for k,v in list(filter(lambda nm: 'Caida' in nm[0], data.items()))}
-        stanford_data = {k : np.around(v[-1], 2) for k,v in list(filter(lambda nm: 'Stanford' in nm[0], data.items()))}
+        caida_data = {k: np.around(v[-1], 2) for k, v in list(filter(lambda nm: 'Caida' in nm[0], data.items()))}
+        stanford_data = {k: np.around(v[-1], 2) for k, v in list(filter(lambda nm: 'Stanford' in nm[0], data.items()))}
         # data = {k: np.around(v, 2) for k, v in sorted(data.items(), key=lambda val: val[1])}
 
         fig, ax = plt.subplots()
@@ -1164,9 +1221,8 @@ class SyntheticRho:
         path_to_save = 'result/rho/2908/figures/rho_real_traces_caida.png'
 
         # ax.plot(list(caida_data.keys()), list(caida_data.values()), marker="d", color="red"T, markersize=14)
-        ax.bar(list(caida_data.keys()), list(caida_data.values()))#, marker="d", color="red", markersize=14)
-        ax.set_ylim([0,5.5])
-
+        ax.bar(list(caida_data.keys()), list(caida_data.values()))  # , marker="d", color="red", markersize=14)
+        ax.set_ylim([0, 5.5])
 
         xy_label_font_size = 28
         ax.xaxis.set_tick_params(labelsize=20)
@@ -1256,34 +1312,48 @@ class SyntheticRho:
         for cache_size in [1024]:  # [64, 256, 512, 1024]:
             plt.clf()
             fig, ax = plt.subplots()
-            rho_type = "rho_denominator"
-            path_to_save = 'result/rho/2908/figures/{0}_{1}.png'.format(rho_type, cache_size)
+            # rho_type = "rho_denominator"
+
+            # rho_type = "rho"
+            # format_func = lambda x: np.log2(x)
+            # xlabel = r'$\rho$'
+
+            rho_type = "rho_numerator"
+            format_func = lambda x: np.log2(x)
+            xlabel = r'$\log(\Phi_{local})$'
+
+            # rho_type = "rho_denominator"
+            # format_func = lambda x: -np.log2(x)
+            # xlabel = r'$-\log(\Phi_{splice})$'
+
+            path_to_save = 'result/rho/2409/{0}_{1}.png'.format(rho_type, cache_size)
 
             for d, mt in marker_type.items():
                 for p, snd_mt in p_array.items():
                     df_t = df[(df['degree'] == d) & (df['p'] == p) & (df['Cache Size'] == cache_size)]
 
                     if snd_mt == "#ffffff":
-                        ax.scatter(list(map(lambda x: x, df_t[rho_type])),
+                        ax.scatter(list(map(format_func, df_t[rho_type])),
                                    df_t['opt_splice_result'] - df_t['opt_local_result'], s=300, c=snd_mt,
                                    edgecolor="black", marker=MarkerStyle(mt), label="d: {0}".format(d))
                     else:
-                        ax.scatter(list(map(lambda x: x, df_t[rho_type])),
+                        ax.scatter(list(map(format_func, df_t[rho_type])),
                                    df_t['opt_splice_result'] - df_t['opt_local_result'], s=300, c=snd_mt,
                                    edgecolor="black", marker=MarkerStyle(mt))
 
-            xy_label_font_size = 28
+            xy_label_font_size = 45
             ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
             ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
 
-            ax.set_xlabel(r'$log(\rho)$'.format(cache_size), fontsize=xy_label_font_size)
             ax.set_ylabel('Cache Miss Diff (%)', fontsize=xy_label_font_size)
+            ax.set_xlabel(xlabel, fontsize=xy_label_font_size)
+
             # ax.set_ylabel('Cache Miss Diff (%)', fontsize=xy_label_font_size)
             # ax.set_xlim([0,0.005])
-            # ax.set_ylim([0, 65])
+            # ax.set_xlim([0, 30])
             # ax.set_xscale('log', basex=2)
             # ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
-            ax.legend(prop=dict(size=28))
+            ax.legend(prop=dict(size=xy_label_font_size))
 
             ax.grid(True)
             N = len(p_array)
@@ -1302,8 +1372,15 @@ class SyntheticRho:
             print(path_to_save)
             h = 8
             fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
-            fig.savefig(path_to_save, dpi=300)
-        #
+
+            plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
+                                hspace=0, wspace=0)
+            plt.margins(0, 0)
+            # plt.gca().xaxis.set_major_locator(plt.NullLocator())
+            # plt.gca().yaxis.set_major_locator(plt.NullLocator())
+
+            fig.savefig(path_to_save, dpi=300, bbox_inches='tight', pad_inches=0)
+
         # print("s")
 
     @staticmethod
@@ -1350,7 +1427,9 @@ class SyntheticRho:
         df['cache_miss_diff'] = df['opt_splice_result'] - df['opt_local_result']
 
         columns = ['degree', 'p', 'rho', 'rho_numerator', 'rho_denominator', 'cache_miss_diff']
+
         df = df[columns]
+        df['p'] = list(map(int, df['p']))
         unique_df = pd.DataFrame(columns=columns)
         check = set()
 
@@ -1361,42 +1440,71 @@ class SyntheticRho:
             else:
                 check.add(key)
                 unique_df = unique_df.append(row, ignore_index=True)
+        # for flag in [0,1,2,3]:
+        for flag in [3]:
+            base = "result/rho/2409/"
+            if flag == 0:
+                unique_df["log_rho"] = list(map(lambda v: np.log2(v), unique_df['rho']))
+                plot_cache_miss_diff = unique_df.pivot("degree", "p", "log_rho")
+                path_to_save = base + 'degree_p_log_rho.png'
 
-        # unique_df["log_rho"] = list(map(lambda v: np.log2(v), unique_df['rho']))
-        # plot_cache_miss_diff = unique_df.pivot("degree", "p", "log_rho")
-        # path_to_save = 'result/rho/2908/figures/degree_p_log_rho.png'
+            if flag == 1:
+                plot_cache_miss_diff = unique_df.pivot("degree", "p", "cache_miss_diff")
+                path_to_save = base + 'degree_p_cache_miss_diff.png'
 
-        # plot_cache_miss_diff = unique_df.pivot("degree", "p", "cache_miss_diff")
-        # path_to_save = 'result/rho/2908/figures/degree_p_cache_miss_diff.png'
+            if flag == 2:
+                unique_df["log_rho_numerator"] = list(map(lambda v: np.log2(v), unique_df['rho_numerator']))
+                plot_cache_miss_diff = unique_df.pivot("degree", "p", "log_rho_numerator")
+                path_to_save = base + 'degree_p_log_rho_numerator.png'
 
-        # unique_df["log_rho_numerator"] = list(map(lambda v: np.log2(v), unique_df['rho_numerator']))
-        # plot_cache_miss_diff = unique_df.pivot("degree", "p", "log_rho_numerator")
-        # path_to_save = 'result/rho/2908/figures/degree_p_log_rho_numerator.png'
+            if flag == 3:
+                unique_df["rho_denominator"] = list(map(lambda v: -np.log2(v), unique_df['rho_denominator']))
+                plot_cache_miss_diff = unique_df.pivot("degree", "p", "rho_denominator")
+                path_to_save = base + 'degree_p_rho_denominator.png'
 
-        unique_df["log_rho_numerator"] = list(map(lambda v: np.log2(v), unique_df['rho_numerator']))
-        plot_cache_miss_diff = unique_df.pivot("degree", "p", "rho_denominator")
-        path_to_save = 'result/rho/2908/figures/degree_p_rho_denominator.png'
+            ax = sns.heatmap(plot_cache_miss_diff)
 
+            xy_label_font_size = 65
+            ax.set_xticklabels(list(map(lambda v: str(int(v)), plot_cache_miss_diff)))
+            ax.set_yticklabels(list(map(lambda v: str(int(v)), unique_df['degree'].drop_duplicates())))
+            # ax.tick_params(labelsize=xy_label_font_size)
+            cbar = ax.collections[0].colorbar
+            cbar.ax.tick_params(labelsize=xy_label_font_size)
+            ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
+            ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
+            ax.set_xlabel(r"$t$", fontsize=xy_label_font_size)
+            ax.set_ylabel('Degree', fontsize=xy_label_font_size)
 
-        ax = sns.heatmap(plot_cache_miss_diff)
-        xy_label_font_size = 28
-        # ax.tick_params(labelsize=xy_label_font_size)
-        cbar = ax.collections[0].colorbar
-        cbar.ax.tick_params(labelsize=xy_label_font_size)
-        ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
-        ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
-        ax.set_xlabel("Traffic (%)", fontsize=xy_label_font_size)
-        ax.set_ylabel('Degree', fontsize=xy_label_font_size)
+            fig = ax.get_figure()
+            # fig.tight_layout()
+            # plt.show()
 
-        fig = ax.get_figure()
-        fig.tight_layout()
-        # plt.show()
+            print(path_to_save)
+            print("")
+            h = 10
+            # fig.set_size_inches(h * (1.3 + 5 ** 0.5) / 2, h * 1.2)
 
-        print(path_to_save)
-        print("")
-        h = 8
-        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
-        fig.savefig(path_to_save, dpi=300)
+            dpi = fig.dpi
+            w, h = fig.get_size_inches()
+
+            fig.set_size_inches(5000 / 300, 3650 / 300)
+
+            # fig.set_size_inches(h * (1.3 + 5 ** 0.5) / 2, h * 1.1)
+
+            plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
+                                hspace=0, wspace=0)
+            plt.margins(0, 0)
+            # plt.gca().xaxis.set_major_locator(plt.NullLocator())
+            # plt.gca().yaxis.set_major_locator(plt.NullLocator())
+
+            fig.tight_layout()
+            fig.savefig(path_to_save, dpi=300, pad_inches=0)  # , bbox_inches='tight')
+            bbox = fig.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+            width, height = bbox.width * fig.dpi, bbox.height * fig.dpi
+            print("flag: {0} width: {1} height: {2}".format(flag, width, height))
+            # plt.show()
+            plt.clf()
+            # break
 
 
 def cache_miss_main():
@@ -1542,10 +1650,26 @@ def main():
     # join_csvs('result/rho/2908/')
     # SyntheticRho.exapnd_rho_calculation("result/rho/scatter_plot/result_summary.csv")
 
-    SyntheticRho.plot_scatter_rho_cache_miss_dif("result/rho/2908/summary_all.csv")
+    # SyntheticRho.plot_scatter_rho_cache_miss_dif("result/rho/2908/summary_all.csv")
     # SyntheticRho.plot_heatmap("result/rho/2908/summary_all.csv")
 
     # SyntheticRho.plot_scatter_rho_cache_miss_dif("result/rho/2908/summary_all.csv")
+
+    RunCheck.run_CacheFlow()
+    # dir_path_array = ['TCP',
+    # 'UDP',
+    # 'zipf_by_node_depth',
+    # 'zipf_random']
+    # for exp in dir_path_array:
+    #     dir_path = 'result/{0}/'.format(exp)
+    #     for name in glob.glob(dir_path + '/*greedy_local.csv'):
+    #         csv_path = name
+    #
+    #     csv_path = csv_path.replace('\\','/')
+    #     opt_csv_path = dir_path + 'result.csv'
+    #     mixedset_csv_path = dir_path + 'cacheflow.csv'
+    #
+    #     PlotResultTable.plot_special_sort_result_table(csv_path, opt_csv_path, mixedset_csv_path)
 
 
 if __name__ == "__main__":

@@ -88,6 +88,35 @@ class Switch:
         return ret_str
 
 
+def run_OTC():
+    policy_json_path = sys.argv[1]
+    packet_trace_json_path = sys.argv[2]
+    cache_size = int(sys.argv[3])
+
+    with open(policy_json_path, 'r') as f:
+        policy = json.load(f)
+
+    with open(packet_trace_json_path, 'r') as f:
+        packet_trace = json.load(f)
+
+    OTC = OnlineTreeCache(policy, cache_size)
+
+    hit = 0
+    t0 = time.time()
+    for idx, packet in enumerate(packet_trace):
+        if packet in OTC.cache:
+            OTC.cache_hit(packet)
+            hit += 1
+        else:
+            OTC.cache_miss(packet)
+
+        if idx % 100000 == 0:
+            print("idx: {0} hit-count :{1}".format(idx, hit))
+    print(time.time() - t0)
+
+    print("Hit rate: {0}".format(hit * 100 / len(packet_trace)))
+
+
 def online_simulator():
     policy = sys.argv[1]
     packet_trace_json_path = sys.argv[2]
@@ -133,7 +162,7 @@ def offline_simulator():
     with open(prefix_weight_json_path, 'r') as f:
         prefix_weight = json.load(f)
 
-    threshold = 0 # using filtered prefix2weight
+    threshold = 0  # using filtered prefix2weight
     shorter_prefix_weight = {k: int(v) for k, v in prefix_weight.items() if np.int64(v) > threshold}
     shorter_prefix_weight['0.0.0.0/0'] = 0
     cache_size = 1024
@@ -145,8 +174,8 @@ def offline_simulator():
     #                                       cache_size=cache_size)
 
     optimized_lpm_cache = OptimizedOptimalLPMCache(policy=list(shorter_prefix_weight.keys()),
-                                          prefix_weight=shorter_prefix_weight,
-                                          cache_size=cache_size)
+                                                   prefix_weight=shorter_prefix_weight,
+                                                   cache_size=cache_size)
 
     # RunCheck.draw_policy_tree_from_algorithm(optimal_lpm_cache, cache_size, prefix_weight)
 
@@ -157,43 +186,39 @@ def offline_simulator():
     # optimal_lpm_cache.get_optimal_cache()
     # print("optimal_lpm_cache: {0}".format(time.time() - t0))
 
-
     optimized_lpm_cache.to_json(dir_path)
 
 
-def run_OTC():
-    policy_json_path = sys.argv[1]
-    packet_trace_json_path = sys.argv[2]
-    cache_size = int(sys.argv[3])
+def cache_flow():
+    prefix_weight_json_path = sys.argv[1]
+    dir_path = sys.argv[2]
 
-    with open(policy_json_path, 'r') as f:
-        policy = json.load(f)
+    with open(prefix_weight_json_path, 'r') as f:
+        prefix_weight = json.load(f)
 
-    with open(packet_trace_json_path, 'r') as f:
-        packet_trace = json.load(f)
+    prefix_weight = {k : float(v) for k,v in prefix_weight.items()}
+    result_df = pd.DataFrame(columns=['Cache Size', 'Hit Rate'])
+    sum_total = sum(prefix_weight.values())
+    cache_flow = CacheFlow(prefix_weight.keys())
+    for cache_size in [64, 128, 256, 512, 1024]:
+        cache, gtc = cache_flow.MixedSet(prefix_weight, cache_size)
+        cache_hit = (sum(prefix_weight[cache_flow.vertex_to_rule[v]] for v in cache) - \
+                    sum(prefix_weight[cache_flow.vertex_to_rule[v]] for v in gtc)) / sum_total
+        row = {'Cache Size': cache_size,
+               'Hit Rate': cache_hit}
 
-    OTC = OnlineTreeCache(policy, cache_size)
+        print("cache size: {0}, cache_hit : {1}".format(cache_size, cache_hit))
 
-    hit = 0
-    t0 = time.time()
-    for idx, packet in enumerate(packet_trace):
-        if packet in OTC.cache:
-            OTC.cache_hit(packet)
-            hit += 1
-        else:
-            OTC.cache_miss(packet)
+        result_df = result_df.append(row, ignore_index=True)
 
-        if idx % 100000 == 0:
-            print("idx: {0} hit-count :{1}".format(idx, hit))
-    print(time.time() - t0)
-
-    print("Hit rate: {0}".format(hit * 100 / len(packet_trace)))
+    result_df.to_csv(dir_path + '/cacheflow.csv')
 
 
 def main():
     # online_simulator()
-    offline_simulator()
+    # offline_simulator()
     # run_OTC()
+    cache_flow()
 
 
 if __name__ == "__main__":

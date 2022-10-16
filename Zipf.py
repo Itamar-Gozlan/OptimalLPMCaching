@@ -9,42 +9,7 @@ from Algorithm import HeuristicLPMCache
 import os
 
 
-class NodeData:
-    def __init__(self, weight=0, size=0, distance=0, n_successors=0, v=0):
-        self.subtree_weight = weight
-        self.subtree_size = size
-        self.subtree_depth = distance
-        self.n_successors = n_successors
-        self.v = v
 
-    def unpack(self):
-        return self.subtree_size, self.n_successors, self.v
-
-    @staticmethod
-    def construct_node_data_dict(policy):
-        policy = list(map(lambda s: s.strip(), policy))
-        policy_tree, rule_to_vertex, successors = HeuristicLPMCache.process_policy(policy)
-        vertex_to_rule = {value: key for key, value in rule_to_vertex.items()}
-        depth_dict = HeuristicLPMCache.construct_depth_dict(policy_tree)
-        # Looking for nodes with low count of successors and big subtrees
-        data_dict = {}
-        for depth in sorted(list(depth_dict.keys()), reverse=True):
-            for v in depth_dict[depth]:
-                node_data = NodeData()
-                node_data.subtree_size = 1
-                if len(successors[v]) == 0:  # leaf
-                    node_data.subtree_depth = 1
-                else:
-                    for u in successors[v]:
-                        node_data.subtree_size += data_dict[u].subtree_size
-                    node_data.subtree_depth = 1 + max(
-                        [data_dict[u].subtree_depth for u in successors[v]])
-                node_data.v = v
-                node_data.n_successors = len(successors[v])
-                node_data.v = v
-                data_dict[v] = node_data
-
-        return data_dict, vertex_to_rule
 
 
 def plot_zipf(weights):

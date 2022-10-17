@@ -199,15 +199,16 @@ def cache_flow():
     prefix_weight = {k : float(v) for k,v in prefix_weight.items()}
     result_df = pd.DataFrame(columns=['Cache Size', 'Hit Rate'])
     sum_total = sum(prefix_weight.values())
-    cache_flow = CacheFlow(prefix_weight.keys())
     for cache_size in [64, 128, 256, 512, 1024]:
-        cache, gtc = cache_flow.MixedSet(prefix_weight, cache_size)
-        cache_hit = (sum(prefix_weight[cache_flow.vertex_to_rule[v]] for v in cache) - \
-                    sum(prefix_weight[cache_flow.vertex_to_rule[v]] for v in gtc)) / sum_total
+        cache_flow = CacheFlow(prefix_weight.keys(), prefix_weight)
+        cache, gtc = cache_flow.MixedSet(cache_size)
+        sum_all_nodes =  sum([prefix_weight[cache_flow.vertex_to_rule[u]] for u in cache])
+        sum_gtc = sum([prefix_weight[cache_flow.vertex_to_rule[u]] for u in gtc])
+        cache_hit_ratio = (sum_all_nodes - sum_gtc) / sum_total
         row = {'Cache Size': cache_size,
-               'Hit Rate': cache_hit}
+               'Hit Rate': 100*cache_hit_ratio}
 
-        print("cache size: {0}, cache_hit : {1}".format(cache_size, cache_hit))
+        print("cache size: {0}, cache_hit : {1}".format(cache_size, cache_hit_ratio))
 
         result_df = result_df.append(row, ignore_index=True)
 

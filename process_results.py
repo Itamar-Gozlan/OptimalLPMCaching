@@ -472,8 +472,8 @@ class RunCheck:
     @staticmethod
     def run_CacheFlow():
         avg_degree = 2
-        n_nodes = 100
-        cache_size = 13
+        n_nodes = 100000
+        cache_size = 10
         while True:
             policy = set(RunCheck.get_random_policy_and_weight(avg_degree, n_nodes))
             zipf_w = np.random.zipf(1.67, len(policy))
@@ -488,15 +488,14 @@ class RunCheck:
             print("len(policy) = {0}".format(len(policy)))
 
             prefix_weight[ROOT_PREFIX] = 0
-            cache_flow = CacheFlow(policy)
+            cache_flow = CacheFlow(policy, prefix_weight)
+            t0 = time.time()
+            cache, gtc, cache_weight, cache_size = cache_flow.MixedSet(cache_size)
+            print("Elapsed time: {0}".format(time.time() - t0))
+            return
 
-            cache, gtc, cache_weight, cache_size = cache_flow.MixedSet(prefix_weight, cache_size)
-            print(cache_size)
-            print(cache_weight)
-            print(len(cache))
             if len(gtc) > 0:
                 break
-            # break
 
         color_map = []
         for vtx in cache_flow.policy_tree.nodes:
@@ -641,7 +640,7 @@ class PlotResultTable:
                 list(map(lambda v: 100 - v, opt_df['Hit Rate'])), marker="P",
                 markersize=14, label="OptSplice")
         ax.plot(list(map(lambda x: str(int(x)), mixedset_df['Cache Size'])),
-                list(map(lambda v: 100 - v*100, mixedset_df['Hit Rate'])), marker="D",
+                list(map(lambda v: 100 - v, mixedset_df['Hit Rate'])), marker="D",
                 markersize=14, label="Mixed-Set")
 
         xy_label_font_size = 28
@@ -1655,21 +1654,21 @@ def main():
 
     # SyntheticRho.plot_scatter_rho_cache_miss_dif("result/rho/2908/summary_all.csv")
 
-    RunCheck.run_CacheFlow()
-    # dir_path_array = ['TCP',
-    # 'UDP',
-    # 'zipf_by_node_depth',
-    # 'zipf_random']
-    # for exp in dir_path_array:
-    #     dir_path = 'result/{0}/'.format(exp)
-    #     for name in glob.glob(dir_path + '/*greedy_local.csv'):
-    #         csv_path = name
-    #
-    #     csv_path = csv_path.replace('\\','/')
-    #     opt_csv_path = dir_path + 'result.csv'
-    #     mixedset_csv_path = dir_path + 'cacheflow.csv'
-    #
-    #     PlotResultTable.plot_special_sort_result_table(csv_path, opt_csv_path, mixedset_csv_path)
+    # RunCheck.run_CacheFlow()
+    dir_path_array = ['TCP',
+    'UDP',
+    'zipf_by_node_depth',
+    'zipf_random']
+    for exp in dir_path_array:
+        dir_path = 'result/{0}/'.format(exp)
+        for name in glob.glob(dir_path + '/*greedy_local.csv'):
+            csv_path = name
+
+        csv_path = csv_path.replace('\\','/')
+        opt_csv_path = dir_path + 'result.csv'
+        mixedset_csv_path = dir_path + 'cacheflow.csv'
+
+        PlotResultTable.plot_special_sort_result_table(csv_path, opt_csv_path, mixedset_csv_path)
 
 
 if __name__ == "__main__":

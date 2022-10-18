@@ -9,6 +9,7 @@ import ipaddress
 import Utils
 import numpy as np
 
+
 def create_LPM_trace():
     csv_path = sys.argv[1]
     row_size = 8
@@ -39,7 +40,7 @@ def create_LPM_trace():
         tpt_type = "UDP"
         policy_20 = set()
         dst_port_idx = udp_dstport_idx
-        for tpt_type, dst_port_idx in zip(["UDP", "TCP"],[udp_dstport_idx, tcp_dstport_idx]):
+        for tpt_type, dst_port_idx in zip(["UDP", "TCP"], [udp_dstport_idx, tcp_dstport_idx]):
             csv_reader = reader(read_obj)
             binary_policy = []
             prefix_weight = {}
@@ -66,7 +67,8 @@ def create_LPM_trace():
                 except IndexError:
                     continue
 
-                prefix_weight[Utils.binary_lpm_to_str(masked_binary)] = 1 + prefix_weight.get(Utils.binary_lpm_to_str(masked_binary), 0)
+                prefix_weight[Utils.binary_lpm_to_str(masked_binary)] = 1 + prefix_weight.get(
+                    Utils.binary_lpm_to_str(masked_binary), 0)
                 binary_policy.append(Utils.binary_lpm_to_str(masked_binary))
             policy = list(set(binary_policy))
             print("len(policy_20) = {0}".format(len(policy_20)))
@@ -78,6 +80,7 @@ def create_LPM_trace():
             print(base_path + 'caida_trace{0}_prefix_weight.json'.format(tpt_type))
             with open(base_path + '/caida_trace{0}_prefix_weight.json'.format(tpt_type), 'w') as f2:
                 json.dump(prefix_weight, f2)
+
 
 def analyze_data():
     # dir_path = "/home/itamar/PycharmProjects/OptimalLPMCaching/Caida/data.caida.org/datasets/passive-2014/equinix-chicago"
@@ -145,6 +148,7 @@ def analyze_data():
 def main():
     create_LPM_trace()
     # analyze_data()
+
 
 if __name__ == "__main__":
     main()

@@ -15,17 +15,37 @@ import os
 def plot_zipf(weights):
     fig, ax = plt.subplots()
     weights_int = list(map(int, weights.values()))
+
+    # weights_int = [1]*10000
     sum_tot = sum(weights_int)
-    n = 100000
+    # n = 100000
 
     # print(sum([x/sum_tot for x in weights_int[:n]]))
-    print(np.cumsum([(x * 100) / sum_tot for x in sorted(weights_int, reverse=True)][:n]))
-    ax.plot(list(range(len(weights_int)))[:n],
-            np.cumsum([(x * 100) / sum_tot for x in sorted(weights_int, reverse=True)][:n]), marker="o")
-    # ax.plot(list(range(len(weights_int))), [np.average(sorted(weights_int))]*len(weights_int))
+    # print(np.cumsum([(x * 100) / sum_tot for x in sorted(weights_int, reverse=True)]))
+    ax.plot(list(range(len(weights_int))),
+            np.cumsum([(x)*100 / sum_tot for x in sorted(weights_int, reverse=True)]), marker="o")
+
+    xy_label_font_size = 28
+    ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
+    # ax.set_yticks([0, 20, 40, 60, 80, 100])
+    ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
+
+    ax.set_ylabel('CDF (%)', fontsize=xy_label_font_size)
+    ax.set_xlabel("Size", fontsize=xy_label_font_size)
+    # ax.set_ylim(ylim)
+    # ax.legend(prop=dict(size=13))  # , loc='lower left')
+    ax.grid(True)
+
+    # path_to_save = path_to_save.replace('.jpg', '_tls.jpg')
+    # path_to_save = 'result/Figures/1510/' + path_to_save.split('/')[-1]
+    # plt.show()
+    fig.tight_layout()
+    # h = 4
+    # fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+    # fig.savefig(path_to_save, dpi=300)
 
     # ax.set_yscale('log')
-    ax.set_title("Weights")
+    # ax.set_title("Weights")
     plt.show()
 
 
@@ -180,9 +200,10 @@ if __name__ == "__main__":
     # main()
     # with open("Zipf/prefix_with_weights.json", 'r') as f:
     #     prefix_weight = json.load(f)
-    with open("Caida/6000rules/caida_traceTCP_prefix_weight.json", 'r') as f:
+    with open("traces/caida_traceUDP_prefix_weight.json", 'r') as f:
         prefix_weight = json.load(f)
     prefix_weight = {k : v for k,v in sorted(prefix_weight.items(), key=lambda x: x[1], reverse=True)}
     plot_zipf(prefix_weight)
+
     # generate_sorted_traces()
     # generate_sorted_traces_by_node_data()

@@ -2,6 +2,7 @@ import json
 import sys
 import time
 
+import Algorithm
 import Utils
 from Utils import *
 from TimeSeriesLogger import *
@@ -196,17 +197,17 @@ def cache_flow():
     with open(prefix_weight_json_path, 'r') as f:
         prefix_weight = json.load(f)
 
-    prefix_weight = {k : float(v) for k,v in prefix_weight.items()}
+    prefix_weight = {k: float(v) for k, v in prefix_weight.items()}
     result_df = pd.DataFrame(columns=['Cache Size', 'Hit Rate'])
     sum_total = sum(prefix_weight.values())
     for cache_size in [64, 128, 256, 512, 1024]:
         cache_flow = CacheFlow(prefix_weight.keys(), prefix_weight)
         cache, gtc = cache_flow.MixedSet(cache_size)
-        sum_all_nodes =  sum([prefix_weight[cache_flow.vertex_to_rule[u]] for u in cache])
+        sum_all_nodes = sum([prefix_weight[cache_flow.vertex_to_rule[u]] for u in cache])
         sum_gtc = sum([prefix_weight[cache_flow.vertex_to_rule[u]] for u in gtc])
         cache_hit_ratio = (sum_all_nodes - sum_gtc) / sum_total
         row = {'Cache Size': cache_size,
-               'Hit Rate': 100*cache_hit_ratio}
+               'Hit Rate': 100 * cache_hit_ratio}
 
         print("cache size: {0}, cache_hit : {1}".format(cache_size, cache_hit_ratio))
 
@@ -215,11 +216,60 @@ def cache_flow():
     result_df.to_csv(dir_path + '/cacheflow.csv')
 
 
+class MeasureAlgorithmTime:
+    @staticmethod
+    def measure_algorithm_time(algorithm, name, prefix_weight):
+        result_df = pd.DataFrame(columns=['Cache Size', 'Hit Rate', 'Elapsed Time'])
+        for cache_size in [64, 128, 256, 512, 1024]:
+        # for cache_size in [1, 2, 3]:
+            t0 = time.time()
+            algorithm.compute_cache(cache_size, prefix_weight)
+            elapsed_time =  time.time() - t0
+            hit_rate = algorithm.get_hit_rate()
+            row = {'Cache Size': cache_size,
+                   'Hit Rate': hit_rate,
+                   'Elapsed Time': elapsed_time}
+            print("cache_size: {0}, elapsed_time: {1}".format(cache_size, elapsed_time))
+            result_df = result_df.append(row, ignore_index=True)
+
+        dir_path = 'result/time_measurement/'
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+        result_df.to_csv('{0}/{1}.csv'.format(dir_path, name))
+
+    @staticmethod
+    def run():
+        flag = int(sys.argv[1])
+        prefix_weight_json_path = sys.argv[2]
+
+        with open(prefix_weight_json_path, 'r') as f:
+            prefix_weight = json.load(f)
+
+        trace_name = prefix_weight_json_path.split('/')[-1].replace('.json', '') + '_'
+        if flag == 0:
+            OptSplice = OptimizedOptimalLPMCache(policy=list(prefix_weight.keys()),
+                                                 prefix_weight=prefix_weight,
+                                                 cache_size=0)
+            return MeasureAlgorithmTime.measure_algorithm_time(OptSplice, trace_name + "OptSplice", prefix_weight)
+        if flag == 1:
+            GreedySplice = Algorithm.HeuristicLPMCache(0, prefix_weight.keys(), True)
+            return MeasureAlgorithmTime.measure_algorithm_time(GreedySplice, trace_name + "GreedySplice", prefix_weight)
+
+        if flag == 2:
+            MixedSet = CacheFlow(prefix_weight.keys(), prefix_weight)
+            return MeasureAlgorithmTime.measure_algorithm_time(MixedSet, trace_name + "MixedSet", prefix_weight)
+
+        if flag == 3:
+            OptLocal = Algorithm.HeuristicLPMCache(0, prefix_weight.keys(), False)
+            return MeasureAlgorithmTime.measure_algorithm_time(OptLocal, trace_name + "OptLocal", prefix_weight)
+
+
 def main():
     # online_simulator()
     # offline_simulator()
     # run_OTC()
-    cache_flow()
+    # cache_flow()
+    MeasureAlgorithmTime.run()
 
 
 if __name__ == "__main__":

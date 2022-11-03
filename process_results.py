@@ -495,14 +495,14 @@ class RunCheck:
             #                  '191.47.0.0/16': 2, '191.50.0.0/16': 5, '33.234.139.0/24': 14, '33.234.233.0/24': 26,
             #                  '33.55.53.0/24': 1, '191.0.0.0/8': 2}
 
+            prefix_weight = {"0.0.0.0/0": 0, "10.0.0.0/8": 24, "10.0.0.0/16": 6, "10.0.0.0/24": 3, "10.0.0.1/32": 1, "10.1.0.0/16": 5, "10.1.0.0/24": 4, "10.1.0.1/32": 3}
 
             prefix_weight[ROOT_PREFIX] = 0
             cache_flow = CacheFlow(prefix_weight.keys(), prefix_weight)
             t0 = time.time()
-            cache = cache_flow.MixedSet(cache_size)
+            # cache = cache_flow.MixedSet(cache_size)
             print("Elapsed time: {0}".format(time.time() - t0))
-            return
-
+            break
 
         color_map = []
         for vtx in cache_flow.policy_tree.nodes:
@@ -639,19 +639,20 @@ class PlotResultTable:
     @staticmethod
     def plot_true_false_opt_df(true_df, false_df, opt_df, mixedset_df, path_to_save, ylim=[0, 100]):
         fig, ax = plt.subplots()
-        ax.plot(list(map(str, false_df['Cache Size'])), list(map(lambda v: 100 - v, false_df['Hit Rate'])), marker="o",
-                markersize=14, label="OptLocal")
+        markeredgewidth = 5
+        linewidth = 5
+        ax.plot(list(map(str, false_df['Cache Size'])), list(map(lambda v: 100 - v, false_df['Hit Rate'])), marker="^",
+                markersize=25, label="OptLocal",  markerfacecolor='none', linewidth=linewidth, markeredgewidth=markeredgewidth)
         ax.plot(list(map(lambda x: str(int(x)), mixedset_df['Cache Size'])),
                 list(map(lambda v: 100 - v, mixedset_df['Hit Rate'])), marker="D",
-                markersize=14, label="Mixed-Set")
+                markersize=25, label="MixedSet", markerfacecolor='none', linewidth=linewidth, markeredgewidth=markeredgewidth)
         ax.plot(list(map(str, true_df['Cache Size'])), list(map(lambda v: 100 - v, true_df['Hit Rate'])), marker="s",
-                markersize=14, label="GreedySplice")
+                markersize=25, label="GreedySplice", markerfacecolor='none', linewidth=linewidth, markeredgewidth=markeredgewidth)
         ax.plot(list(map(lambda x: str(int(x)), opt_df['Cache Size'])),
                 list(map(lambda v: 100 - v, opt_df['Hit Rate'])), marker="P",
-                markersize=14, label="OptSplice")
+                markersize=25, label="OptSplice", markerfacecolor='none', linewidth=linewidth, markeredgewidth=markeredgewidth)
 
-
-        xy_label_font_size = 28
+        xy_label_font_size = 30
         ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
         ax.set_yticks([0, 20, 40, 60, 80, 100])
         ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
@@ -659,18 +660,28 @@ class PlotResultTable:
         ax.set_ylabel('Cache Miss (%)', fontsize=xy_label_font_size)
         ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
         ax.set_ylim(ylim)
-        ax.legend(prop=dict(size=13))#, loc='lower left')
+        ax.legend(prop=dict(size=xy_label_font_size))# , loc='lower left')
         ax.grid(True)
 
         # path_to_save = path_to_save.replace('.jpg', '_tls.jpg')
         # path_to_save = 'result/Figures/1510/' + path_to_save.split('/')[-1]
-        print(path_to_save)
         # plt.show()
         fig.tight_layout()
-        print(path_to_save)
         h = 4
+        h = 8
+
         fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
-        fig.savefig(path_to_save, dpi=300)
+
+        plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
+                            hspace=0, wspace=0)
+        plt.margins(0, 0)
+
+        fig.tight_layout()
+        # plt.show()
+        print(path_to_save)
+        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+
+        fig.savefig(path_to_save, dpi=300, bbox_inches='tight', pad_inches=0)
 
     @staticmethod
     def plot_range_result_table(greedy_local_csv_path, opt_csv_path):
@@ -708,26 +719,25 @@ class PlotResultTable:
         #
         # # df.rename(columns={"A": "a", "B": "c"})
         # # df.sort_values(by=['degree'], ascending=[False])
-        # false_df = false_df.rename(columns={"Hit Rate": "OptLocal"}).sort_values(by=['Cache Size'], ascending=[True])
-        # true_df = true_df.rename(columns={"Hit Rate": "GreedySplice"}).sort_values(by=['Cache Size'], ascending=[True])
-        # df_opt = df_opt.rename(columns={"Hit Rate": "OptSplice"}).sort_values(by=['Cache Size'], ascending=[True])
-        # df_mixedset = df_mixedset.rename(columns={"Hit Rate": "MixedSet"}).sort_values(by=['Cache Size'], ascending=[True])
+        false_df = false_df.rename(columns={"Hit Rate": "OptLocal"}).sort_values(by=['Cache Size'], ascending=[True])
+        true_df = true_df.rename(columns={"Hit Rate": "GreedySplice"}).sort_values(by=['Cache Size'], ascending=[True])
+        df_opt = df_opt.rename(columns={"Hit Rate": "OptSplice"}).sort_values(by=['Cache Size'], ascending=[True])
+        df_mixedset = df_mixedset.rename(columns={"Hit Rate": "MixedSet"}).sort_values(by=['Cache Size'], ascending=[True])
         #
-        # df = pd.DataFrame(columns=['Cache Size', 'OptLocal', 'GreedySplice', 'MixedSet'])
-        # df['Cache Size'] = list(false_df['Cache Size'])
-        # df['OptLocal'] = list(false_df['OptLocal'])
-        # df['MixedSet'] = list(df_mixedset['MixedSet'])
-        # df['GreedySplice'] = list(true_df['GreedySplice'])
-        # df['OptSplice'] = list(df_opt['OptSplice'])
-        #
-        # df.to_csv("/".join(csv_path.split('/')[:-1]) + '/1710/{0}.csv'.format(csv_path.split('/')[-2]))
-        # print("Title: {0}".format(csv_path.split('/')[-2]))
-        # print(df.to_latex(index=False))
+        df = pd.DataFrame(columns=['Cache Size', 'OptLocal', 'MixedSet', 'GreedySplice', "OptSplice"])
+        df['Cache Size'] = list(false_df['Cache Size'])
+        df['OptLocal'] = list(map(lambda v: 100 -v, list(false_df['OptLocal'])))
+        df['MixedSet'] = list(map(lambda v: 100 -v, list(df_mixedset['MixedSet'])))
+        df['GreedySplice'] = list(map(lambda v: 100 -v, list(true_df['GreedySplice'])))
+        df['OptSplice'] = list(map(lambda v: 100 -v, list(df_opt['OptSplice'])))
 
+        df.to_csv("/".join(csv_path.split('/')[:-1]) + '/1710/{0}.csv'.format(csv_path.split('/')[-2]))
+        print("Title: {0}".format(csv_path.split('/')[-2]))
+        print(df.to_latex(index=False))
 
-        path_to_save = 'result/Figures/1510/' + csv_path.split('/')[-2] + '.pdf'
-        PlotResultTable.plot_true_false_opt_df(true_df, false_df, df_opt, df_mixedset,
-                                               path_to_save)
+        # path_to_save = 'result/Figures/1510/' + csv_path.split('/')[-2] + '.pdf'
+        # PlotResultTable.plot_true_false_opt_df(true_df, false_df, df_opt, df_mixedset,
+        #                                        path_to_save)
 
     @staticmethod
     def calculate_and_save_bar_data(policy_json_path, prefix2weight_json_path, height2weight_histogram_json_path):
@@ -877,6 +887,46 @@ class PlotResultTable:
         print("s")
 
         # calculate % traffic per each subtree heught
+
+    @staticmethod
+    def plot_run_time():
+        path = "result/time_measurement/"
+        # experiment = "caida_traceTCP_prefix_weight_"
+        # experiment = 'caida_traceUDP_prefix_weight_'
+        experiment = 'zipf_trace_1_0_prefix2weight_'
+
+        algorithm_name_array = ["OptLocal", "MixedSet", "GreedySplice"]#, "OptSplice"]
+        fig, ax = plt.subplots()
+        marker_array = ["o", "D", "s", "P"]
+        for idx, algorithm_name in enumerate(algorithm_name_array):
+            df = pd.read_csv(path + experiment + "{0}.csv".format(algorithm_name))
+            ax.plot(list(map(lambda x: str(int(x)), df['Cache Size'])), df['Elapsed Time'], marker=marker_array[idx], markersize=14, label=algorithm_name)
+            # print(df['Cache Size'])
+            # print(df['Elapsed Time'])
+
+        xy_label_font_size = 28
+        ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
+        # ax.set_xticks(list(map(str,cache_size_array)))
+
+        ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
+
+        ax.set_ylabel('Elapsed Time [sec]', fontsize=xy_label_font_size)
+        ax.set_xlabel("Cache Size", fontsize=xy_label_font_size)
+        ax.legend(prop=dict(size=13))  # , loc='lower left')
+        ax.grid(True)
+
+        # path_to_save = path_to_save.replace('.jpg', '_tls.jpg')
+        path_to_save = experiment.replace("_prefix_weight_", ".pdf")
+        path_to_save = experiment.replace("_prefix2weight_", ".pdf")
+
+        path_to_save = 'result/Figures/1510/' + path_to_save.split('/')[-1]
+        print(path_to_save)
+        fig.tight_layout()
+        # print(path_to_save)
+        h = 4
+        fig.set_size_inches(h * (1 + 5 ** 0.5) / 2, h * 1.1)
+        fig.savefig(path_to_save, dpi=300)
+
 
     @staticmethod
     def plot_result_summary_diff(result_summary_csv):
@@ -1345,17 +1395,18 @@ class SyntheticRho:
             fig, ax = plt.subplots()
             # rho_type = "rho_denominator"
 
-            # rho_type = "rho"
-            # format_func = lambda x: np.log2(x)
+            rho_type = "rho"
+            format_func = lambda x: np.log2(x)
             # xlabel = r'$\rho$'
+            xlabel = r'$\lambda$'
 
             # rho_type = "rho_numerator"
             # format_func = lambda x: np.log2(x)
             # xlabel = r'$\log(\Phi_{local})$'
 
-            rho_type = "rho_denominator"
-            format_func = lambda x: -np.log2(x)
-            xlabel = r'$-\log(\Phi_{splice})$'
+            # rho_type = "rho_denominator"
+            # format_func = lambda x: -np.log2(x)
+            # xlabel = r'$-\log(\Phi_{splice})$'
 
             path_to_save = 'result/rho/1810/{0}_{1}.pdf'.format(rho_type, cache_size)
 
@@ -1365,11 +1416,11 @@ class SyntheticRho:
 
                     if snd_mt == "#ffffff":
                         ax.scatter(list(map(format_func, df_t[rho_type])),
-                                   df_t['opt_splice_result'] - df_t['opt_local_result'], s=300, c=snd_mt,
-                                   edgecolor="black", marker=MarkerStyle(mt), label="d: {0}".format(d))
+                                   df_t['opt_splice_result'] - df_t['opt_local_result'], s=1100, c=snd_mt,
+                                   edgecolor="black", marker=MarkerStyle(mt), label=r"$d: {0}$".format(d))
                     else:
                         ax.scatter(list(map(format_func, df_t[rho_type])),
-                                   df_t['opt_splice_result'] - df_t['opt_local_result'], s=300, c=snd_mt,
+                                   df_t['opt_splice_result'] - df_t['opt_local_result'], s=1100, c=snd_mt,
                                    edgecolor="black", marker=MarkerStyle(mt))
 
             xy_label_font_size = 45
@@ -1393,7 +1444,7 @@ class SyntheticRho:
             norm = mpl.colors.LogNorm(vmin=1, vmax=100)
             sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
             cbar = fig.colorbar(sm, ax=ax)  # , label=")
-            cbar.set_label(label="Traffic (%)", size=xy_label_font_size)  # , weight='bold')
+            cbar.set_label(label=r"$p$", size=xy_label_font_size)  # , weight='bold')
             cbar.set_ticks([1, 2, 4, 8, 16, 32, 64, 100])
             cbar.set_ticklabels(['$1$', '$2$', '$4$', '$8$', '$16$', '$32$', '$64$', '$100$'])
             cbar.ax.tick_params(labelsize=xy_label_font_size)
@@ -1471,8 +1522,8 @@ class SyntheticRho:
             else:
                 check.add(key)
                 unique_df = unique_df.append(row, ignore_index=True)
-        for flag in [0,1,2,3]:
-        # for flag in [3]:
+        for flag in [0, 1, 2, 3]:
+            # for flag in [3]:
             base = "result/rho/1810/"
             if flag == 0:
                 unique_df["log_rho"] = list(map(lambda v: np.log2(v), unique_df['rho']))
@@ -1503,8 +1554,8 @@ class SyntheticRho:
             cbar.ax.tick_params(labelsize=xy_label_font_size)
             ax.xaxis.set_tick_params(labelsize=xy_label_font_size)
             ax.yaxis.set_tick_params(labelsize=xy_label_font_size)
-            ax.set_xlabel(r"$t$", fontsize=xy_label_font_size)
-            ax.set_ylabel('Degree', fontsize=xy_label_font_size)
+            ax.set_xlabel(r"$p$", fontsize=xy_label_font_size)
+            ax.set_ylabel(r'$d$', fontsize=xy_label_font_size)
 
             fig = ax.get_figure()
             # fig.tight_layout()
@@ -1518,7 +1569,8 @@ class SyntheticRho:
             dpi = fig.dpi
             w, h = fig.get_size_inches()
 
-            fig.set_size_inches(5000 / 300, 3650 / 300)
+            # fig.set_size_inches(5000 / 300, 3650 / 300)
+            fig.set_size_inches(5700 / 300, 3650 / 300)
 
             # fig.set_size_inches(h * (1.3 + 5 ** 0.5) / 2, h * 1.1)
 
@@ -1686,21 +1738,24 @@ def main():
 
     # SyntheticRho.plot_scatter_rho_cache_miss_dif("result/rho/2908/summary_all.csv")
 
-    # RunCheck.run_CacheFlow()
-    dir_path_array = ['TCP',
-    'UDP',
-    'zipf_by_node_depth',
-    'zipf_random']
-    for exp in dir_path_array:
-        dir_path = 'result/{0}/'.format(exp)
-        for name in glob.glob(dir_path + '/*greedy_local.csv'):
-            csv_path = name
-
-        csv_path = csv_path.replace('\\','/')
-        opt_csv_path = dir_path + 'result.csv'
-        mixedset_csv_path = dir_path + 'cacheflow.csv'
-
-        PlotResultTable.plot_special_sort_result_table(csv_path, opt_csv_path, mixedset_csv_path)
+    RunCheck.run_CacheFlow()
+    # dir_path_array = [
+    #     'zipf_random',
+    #     'zipf_by_node_depth',
+    #     'TCP',
+    #     'UDP'
+    #                   ]
+    # for exp in dir_path_array:
+    #     dir_path = 'result/{0}/'.format(exp)
+    #     for name in glob.glob(dir_path + '/*greedy_local.csv'):
+    #         csv_path = name
+    #
+    #     csv_path = csv_path.replace('\\','/')
+    #     opt_csv_path = dir_path + 'result.csv'
+    #     mixedset_csv_path = dir_path + 'cacheflow.csv'
+    #
+    #     PlotResultTable.plot_special_sort_result_table(csv_path, opt_csv_path, mixedset_csv_path)
+    # PlotResultTable.plot_run_time()
 
 
 if __name__ == "__main__":

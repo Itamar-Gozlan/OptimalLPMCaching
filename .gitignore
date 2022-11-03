@@ -9,9 +9,12 @@ tmp*
 *.out
 *.jpg
 *.png
+*.pdf
 *.prof
-Figures/
-Caida/
-run_sc/
+Figures/*
+Caida/*
+run_sc/*
+result/*
+Thesis/*
 last_min_additions/
 running_example/

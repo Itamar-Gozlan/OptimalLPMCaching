@@ -245,6 +245,8 @@ class MeasureAlgorithmTime:
         with open(prefix_weight_json_path, 'r') as f:
             prefix_weight = json.load(f)
 
+        prefix_weight = {k : int(v) for k,v in prefix_weight.items()}
+
         trace_name = prefix_weight_json_path.split('/')[-1].replace('.json', '') + '_'
         if flag == 0:
             OptSplice = OptimizedOptimalLPMCache(policy=list(prefix_weight.keys()),

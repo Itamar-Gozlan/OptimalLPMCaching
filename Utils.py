@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from networkx.drawing.nx_pydot import graphviz_layout
 from collections import defaultdict, OrderedDict
 import itertools
-# from Algorithm import *
+import Algorithm
 
 rule_to_vertex = None
 vertex_to_rule = None
@@ -17,7 +17,9 @@ final_nodes = None
 goto_nodes = []
 cache_size = 4
 n_bits = 32
+
 ROOT = 0
+ROOT_PREFIX = '0.0.0.0/0'
 
 
 # ---------------- Preliminaries -----------------
@@ -209,7 +211,7 @@ def get_cache_candidate_tree(prefix_weight_path):
         prefix_weight = json.load(f)
     print("len(prefix_weight) = {0}".format(len(prefix_weight)))
     subtree_weight = {}
-    policy_tree, rule_to_vertex, successors = HeuristicLPMCache.process_policy(prefix_weight.keys())
+    policy_tree, rule_to_vertex, successors = Algorithm.HeuristicLPMCache.process_policy(prefix_weight.keys())
     vertex_to_rule = {value: key for key, value in rule_to_vertex.items()}
 
     # clean subtrees with weight < heaviest 1024th leaf
@@ -218,7 +220,7 @@ def get_cache_candidate_tree(prefix_weight_path):
                                list(filter(lambda x: x[1] == 0, {k: len(v) for k, v in successors.items()}.items()))],
                               reverse=True)[:cache_size][-1]
 
-    depth_dict = HeuristicLPMCache.construct_depth_dict(policy_tree)
+    depth_dict = Algorithm.HeuristicLPMCache.construct_depth_dict(policy_tree)
     for depth in sorted(list(depth_dict.keys()), reverse=True)[:-1]:
         for v in depth_dict[depth]:
             subtree_weight[v] = int(prefix_weight.get(vertex_to_rule[v], 0)) + \
@@ -232,7 +234,7 @@ def get_cache_candidate_tree(prefix_weight_path):
     for u in non_relevant_root_children:
         policy_tree.remove_edge(ROOT, u)
 
-    depth_dict = HeuristicLPMCache.construct_depth_dict(policy_tree)
+    depth_dict = Algorithm.HeuristicLPMCache.construct_depth_dict(policy_tree)
 
     new_prefix2weight_v = list(itertools.chain(*list(depth_dict.values())))
     new_prefix2weight = {vertex_to_rule[v]: prefix_weight[vertex_to_rule[v]] for v in new_prefix2weight_v}

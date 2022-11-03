@@ -886,6 +886,7 @@ class CacheFlow:
                         cache.add(self.GTC((u)))
                     break
             x_pred = list(self.policy_tree.predecessors(v))[0]  # tree, one element is predecessor
+
             if x_pred != ROOT and x_pred not in cache:
                 self.M[(x_pred, 'cover')].set = self.M[(x_pred, 'cover')].set - self.M[(v, 'cover')].set
                 self.M[(x_pred, 'cover')].cost = self.M[(x_pred, 'cover')].cost - 1
@@ -900,9 +901,11 @@ class CacheFlow:
 
             for type in ['dependent', 'cover']:
                 del self.M[(v, type)]
+
         return cache
 
     def compute_cache(self, cache_size, prefix_weight):
+        self.__init__(prefix_weight.keys(), prefix_weight)
         cache = self.MixedSet(cache_size)
         cache = filter(lambda elem: isinstance(elem, int), cache)
         sum_total = sum(prefix_weight.values())
